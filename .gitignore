@@ -1,0 +1,22 @@
+# Private brief: local only (ask before publishing)
+QALQON_BRIEF.md
+
+# Data: raw downloads stay local; only the generator and small samples are committed
+data/raw/
+data/processed/
+*.parquet
+*.pt
+*.zip
+
+# Generated artifacts: rebuilt by train.py
+models/
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+.env
+
+# Runtime state (audit log)
+var/

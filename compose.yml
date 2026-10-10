@@ -1,0 +1,14 @@
+services:
+  app:
+    build: .
+    container_name: qalqon
+    restart: unless-stopped
+    volumes:
+      - ./models:/app/models:ro
+      - ./var:/app/var
+    networks: [web]
+
+networks:
+  web:
+    name: online-home-work_default   # HTTPS comes from the Caddy on this network
+    external: true

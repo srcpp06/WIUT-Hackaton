@@ -1,0 +1,4 @@
+# Exact pins: the same versions train and serve the models
+fastapi==0.143.0
+uvicorn==0.54.0
+jinja2==3.1.6

@@ -1,0 +1,5 @@
+:root { --bg: #f7f8fa; --fg: #14171c; --muted: #5d6573; }
+@media (prefers-color-scheme: dark) { :root { --bg: #111418; --fg: #e8eaee; --muted: #9aa3b2; } }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 16px/1.5 system-ui, sans-serif; }
+.wrap { max-width: 720px; margin: 0 auto; padding: 48px 16px; }
+.muted { color: var(--muted); }
