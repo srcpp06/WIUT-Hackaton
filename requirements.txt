@@ -1,4 +1,13 @@
-# Exact pins: the same versions train and serve the models
+# Exact pins: the same versions train and serve the models (pickled artifacts)
+torch==2.14.1
+torch_geometric==2.8.0.post1
+lightgbm==4.7.0
+scikit-learn==1.9.1
+numpy==2.5.3
+pandas==3.0.6
+polars==2.0.0
+pyarrow==26.0.0
 fastapi==0.143.0
 uvicorn==0.54.0
 jinja2==3.1.6
+python-multipart==0.0.32
