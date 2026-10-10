@@ -20,4 +20,8 @@ uv pip install --python .venv/bin/python --extra-index-url https://download.pyto
 
 ## Deploy
 
-`docker compose up -d --build` builds the image and starts the `qalqon` container.
+Live demo: **https://qalqon.132-226-186-157.sslip.io**
+
+`./deploy.sh` checks out the pushed commit on the server, rebuilds the `qalqon` container
+(`docker compose up -d --build`), waits for `/health` and records the result as a GitHub
+deployment. `./deploy.sh --data` also copies the trained `models/`.
