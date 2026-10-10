@@ -3,25 +3,142 @@
 Real-time detection of fraud and money laundering in bank transactions, built for the WIUT FinTech
 hackathon final (partner: MKBANK anti-fraud / AML desk).
 
-QALQON scores each transaction with trained models (a LightGBM baseline and a graph neural
-network), explains every alert and leaves the decision to a human officer. No LLM and no external
-API sit on the decision path; everything runs on a plain CPU server.
+**Live demo: https://qalqon.132-226-186-157.sslip.io**
 
-> Work in progress: this README grows with the system. Every metric reported here will be
-> measured on held-out public data, never invented.
+QALQON scores every transaction with two trained models, a LightGBM baseline and a graph neural
+network (GraphSAGE), explains each alert in plain Uzbek and leaves the decision to a human officer.
+No LLM and no external API sit on the decision path; everything runs on one CPU server.
 
-## Run locally
+## What you can do in the demo
+
+| Page | What it shows |
+|---|---|
+| **Navbat** (`/`) | A synthetic Uzbek bank (2,000 customers, about 125,000 transactions on Humo, Uzcard, Click, Payme, Uzum, bank transfers, cash and SWIFT), every transaction scored, the riskiest first. |
+| **Alert** (`/alert/{id}`) | The probability from each model, the reasons (TreeSHAP grouped into plain-Uzbek reasons with the facts behind them), the evidence subgraph around the two accounts, and the officer's decision form. |
+| **Jonli kiritish** (`/inject`) | Add one transaction or a whole scheme (mule fan-in with cash-out, fan-out, cycle) to the bank. Features are computed on the spot, both models score it and the queue updates. The models are not told what was added. |
+| **CSV** (`/upload`) | Upload your own transactions (`ts, src_bank, src_account, dst_bank, dst_account, amount_uzs, rail`); they are scored as a separate graph. A sample file is linked on the page. |
+| **Dalillar** (`/evidence`) | Measured results: PR-AUC, precision and recall at alert budgets, calibration, the ablation LightGBM vs GNN vs ensemble, the Elliptic check, live latency and CPU cost per transaction. |
+| **Audit** (`/audit`) | Every officer decision, hash-chained (SHA-256) so that editing a past entry is detected. |
+
+## How it works
+
+```
+transactions ─▶ ingest: one schema for AMLworld and the Uzbek data (amounts in USD, rails mapped)
+             ─▶ features that only look backwards in time (src/features.py)
+                  · the payment: amount, rail, hour, weekday, same bank
+                  · sender and receiver history before this payment: payments in/out and money in/out
+                    over 24 h and 7 days, number of distinct counterparties (fan-in / fan-out)
+                  · pass-through: how soon money leaves after it arrived; first payment between the pair
+             ─▶ LightGBM (src/baseline.py)           ─┐
+             ─▶ GraphSAGE over the account graph      ├─▶ stacking (logistic regression fitted on
+                (src/gnn.py): accounts are nodes,     │   the validation period) ─▶ probability
+                payments are edges, messages flow    ─┘
+                both ways (money in and money out)
+             ─▶ explanation: TreeSHAP per feature, grouped into Uzbek reasons; evidence subgraph
+             ─▶ ranked queue ─▶ officer decides ─▶ hash-chained audit log
+```
+
+- **Time-aware evaluation.** Data is split by time (first 60% train, next 20% validation, last 20%
+  test). Early stopping, calibration, the stacking weights and the decision threshold use the
+  validation period only; the test period is touched once, for the reported numbers.
+- **GNN protocol.** The graph that scores a period contains the transactions up to the end of that
+  period with labels hidden, as in the AMLworld benchmark (Egressy et al., 2024). The LightGBM
+  features are stricter: they only use the past of each transaction.
+- **Calibration.** Isotonic regression on the validation period turns scores into probabilities.
+
+## Results
+
+All numbers are measured on data the models never saw during training; the Evidence page shows
+them live from `models/metrics.json`.
+
+**IBM AMLworld HI-Small, test period:** _to be filled in by `train.py`._
+
+**Elliptic (external check of the approach, real Bitcoin transactions, test time steps 35–49):**
+
+| Model | PR-AUC | Illicit F1 | Precision | Recall |
+|---|---|---|---|---|
+| LightGBM | 0.765 | 0.784 | 84.5% | 73.2% |
+| GraphSAGE alone | 0.257 | 0.388 | 37.9% | 39.8% |
+| Stacking ensemble | **0.795** | **0.803** | 91.5% | 71.6% |
+
+The GNN alone generalises poorly over time on Elliptic, but stacked with LightGBM it improves on
+LightGBM alone. We report this as it is.
+
+## Data and licences
+
+| Dataset | Used for | Source and licence |
+|---|---|---|
+| IBM AMLworld, HI-Small (Altman et al., 2023) | training and held-out test | Kaggle `ealtman2019/ibm-transactions-for-anti-money-laundering-aml`; licence: _see Kaggle page_ |
+| Elliptic Data Set (Weber et al., 2019) | external check | Kaggle `ellipticco/elliptic-data-set`, downloaded through PyTorch Geometric; licence: _see Kaggle page_ |
+| QALQON Uzbek demo bank | live demo only | generated by `src/generator.py` in this repo; **CC0 1.0** |
+
+All data is synthetic or public. There is no real personal data. In the demo bank, "MKBANK" is the
+partner bank and "Bank-A" to "Bank-E" are fictitious; names of people are randomly generated.
+
+**Modelling assumptions (declared):**
+- Uzbek amounts are converted at a fixed 12,800 UZS per USD.
+- Uzbek rails are mapped to the nearest AMLworld payment format:
+
+  | Uzbek rails | AMLworld format |
+  |---|---|
+  | Humo, Uzcard | Credit Card |
+  | Click, Payme, Uzum, bank transfer | ACH |
+  | cash | Cash |
+  | SWIFT | Wire |
+  | crypto | Bitcoin |
+
+## Run it
 
 ```bash
 uv venv --python 3.12 .venv
 uv pip install --python .venv/bin/python --extra-index-url https://download.pytorch.org/whl/cpu -r requirements.txt
-.venv/bin/uvicorn src.app:app --reload
+
+python -m src.generator --out data/demo --accounts 2000   # the Uzbek demo bank (deterministic, seed 7)
+python train.py        # needs data/raw/amlworld/HI-Small_Trans.csv; writes models/
+python elliptic.py     # optional external check; writes models/elliptic.json
+uvicorn src.app:app --reload
 ```
 
-## Deploy
+`./deploy.sh` deploys the pushed commit to the demo server (Docker behind Caddy) and records it as
+a GitHub deployment. `./deploy.sh --data` also copies `models/`.
 
-Live demo: **https://qalqon.132-226-186-157.sslip.io**
+## API
 
-`./deploy.sh` checks out the pushed commit on the server, rebuilds the `qalqon` container
-(`docker compose up -d --build`), waits for `/health` and records the result as a GitHub
-deployment. `./deploy.sh --data` also copies the trained `models/`.
+| Method | Path | Purpose |
+|---|---|---|
+| POST | `/api/score` | `{"transactions": [{ts, src_bank, src_account, dst_bank, dst_account, amount_uzs, rail}, …]}` → probabilities of each model, the ensemble, and reasons for the top alerts |
+| GET | `/api/metrics` | evaluation metrics and live latency |
+| GET | `/health` | liveness |
+
+## Third-party software
+
+Python libraries: PyTorch (BSD-3-Clause), PyTorch Geometric (MIT), LightGBM (MIT), scikit-learn
+(BSD-3-Clause), NumPy and pandas (BSD-3-Clause), Polars (MIT), FastAPI (MIT), Uvicorn
+(BSD-3-Clause), Jinja2 (BSD-3-Clause).
+
+Front end, served locally with no CDN: htmx (0BSD) and Chart.js (MIT).
+
+## Limitations
+
+- **Unseen schemes.** The models learn the typologies present in AMLworld. New schemes may be missed.
+- **New accounts.** Accounts with no history (cold start) have empty history features.
+- **Synthetic data.** Both the training data and the demo bank are synthetic. Real performance has to
+  be measured on the bank's own data in a pilot.
+- **GNN view.** The GNN sees the graph as it stands. In live use, a scheme becomes clearer as more of
+  its transactions arrive, so scores are refreshed whenever the graph changes.
+
+## Repository layout
+
+```
+src/ingest.py      data loading, one schema for AMLworld and the Uzbek data
+src/features.py    backward-looking transaction features
+src/baseline.py    LightGBM + calibration
+src/gnn.py         GraphSAGE edge classifier
+src/evaluate.py    PR-AUC, precision/recall at budget, calibration
+src/explain.py     TreeSHAP reasons in Uzbek, evidence subgraph
+src/generator.py   Uzbek synthetic demo bank (CC0)
+src/service.py     scoring, live injection, CSV scoring, audit
+src/app.py         FastAPI routes; templates/ and static/ hold the UI
+train.py           trains both models, evaluates, writes models/
+elliptic.py        external check on Elliptic
+```
