@@ -32,15 +32,16 @@ class Models:
         self.gnn = gnn.SAGEEdge(meta['n_node'], meta['n_edge'])
         self.gnn.load_state_dict(torch.load(d / 'gnn.pt', weights_only=True)); self.gnn.eval()
         self.scaler, self.cal_g = meta['scaler'], meta['calibrator']
-        self.cal_e = joblib.load(d / 'ensemble.joblib')
+        self.stack = joblib.load(d / 'ensemble.joblib')
         self.metrics = json.loads((d / 'metrics.json').read_text())
 
-    def gnn_scores(self, t):
-        return self.cal_g.predict(gnn.predict(self.gnn, gnn.Graph(t, self.scaler), gnn.edge_attrs(t)))
+    def gnn_raw(self, t):
+        return gnn.predict(self.gnn, gnn.Graph(t, self.scaler), gnn.edge_attrs(t))
 
-    def ensemble(self, p_l, p_g):
-        avg = (p_l + p_g) / 2
-        return self.cal_e.predict(avg), avg
+    def scores(self, raw_l, raw_g):
+        """Calibrated probabilities of each model and of the stacked ensemble."""
+        p = self.stack.predict_proba(np.column_stack([raw_l, raw_g]))[:, 1]
+        return self.lgbm.calibrator.predict(raw_l), self.cal_g.predict(raw_g), p
 
 
 class Service:
@@ -63,15 +64,14 @@ class Service:
             self.raw = self.base.clone()
             self.t = from_uz(self.raw)
             self.X = build(self.t)
-            self.p_l = self.m.lgbm.predict(self.X)
+            self.raw_l = self.m.lgbm.raw(self.X)
             self.explainer = Explainer(self.m.lgbm.columns, self.X)
             self._rescore_graph()
             self.injected = []
 
     def _rescore_graph(self):
-        self.p_g = self.m.gnn_scores(self.t)
-        self.p, self.avg = self.m.ensemble(self.p_l, self.p_g)
-        order = np.argsort(-self.avg, kind='stable')
+        self.p_l, self.p_g, self.p = self.m.scores(self.raw_l, self.m.gnn_raw(self.t))
+        order = np.argsort(-self.p, kind='stable')
         self.rank = np.empty(len(order), dtype=np.int64); self.rank[order] = np.arange(len(order))
         n = len(order)
         self.level = np.where(self.rank < HIGH * n, 'high', np.where(self.rank < MEDIUM * n, 'medium', 'low'))
@@ -101,7 +101,7 @@ class Service:
             assert t['row'].to_list()[-len(new):] == new, 'injected transactions must be the latest ones'
             self.t = t
             self.X = pl.concat([pl.from_pandas(self.X), pl.from_pandas(Xn)]).to_pandas()
-            self.p_l = np.concatenate([self.p_l, self.m.lgbm.predict(Xn)])
+            self.raw_l = np.concatenate([self.raw_l, self.m.lgbm.raw(Xn)])
             self._rescore_graph()
             self.injected += new
             wall, cpu = (time.perf_counter() - w0) * 1000, (time.process_time() - c0) * 1000
@@ -113,10 +113,10 @@ class Service:
         w0, c0 = time.perf_counter(), time.process_time()
         t = from_uz(df.with_row_index('row').with_columns(pl.col('row').cast(pl.Int64)))
         X = build(t)
-        p_l = self.m.lgbm.predict(X); p_g = self.m.gnn_scores(t); p, avg = self.m.ensemble(p_l, p_g)
+        p_l, p_g, p = self.m.scores(self.m.lgbm.raw(X), self.m.gnn_raw(t))
         wall, cpu = (time.perf_counter() - w0) * 1000, (time.process_time() - c0) * 1000
         self.latency.append((wall / t.height, cpu / t.height))
-        order = np.argsort(-avg, kind='stable')[:50]
+        order = np.argsort(-p, kind='stable')[:50]
         contrib = self.m.lgbm.contributions(X.iloc[order[:10]])
         ex = Explainer(self.m.lgbm.columns, X)
         out = []

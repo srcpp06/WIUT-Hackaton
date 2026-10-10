@@ -17,6 +17,7 @@ import joblib
 import numpy as np
 import torch
 from sklearn.isotonic import IsotonicRegression
+from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import precision_recall_curve
 
 from src import baseline, evaluate, gnn
@@ -46,7 +47,8 @@ def main(a):
     # 1) LightGBM on backward-looking transaction features
     t1 = time.time()
     lgbm = baseline.fit(X.iloc[tr], y[tr], X.iloc[va], y[va], log=log)
-    p_va = {'lgbm': lgbm.predict(X.iloc[va])}; p_te = {'lgbm': lgbm.predict(X.iloc[te])}
+    raw_va, raw_te = lgbm.raw(X.iloc[va]), lgbm.raw(X.iloc[te])
+    p_va = {'lgbm': lgbm.calibrator.predict(raw_va)}; p_te = {'lgbm': lgbm.calibrator.predict(raw_te)}
     timing['lgbm_train_s'] = time.time() - t1
     importance = dict(zip(lgbm.columns, lgbm.booster.feature_importance('gain').round(1).tolist()))
     del X
@@ -63,10 +65,12 @@ def main(a):
     p_va['gnn'], p_te['gnn'] = cal_g.predict(r_va), cal_g.predict(r_te)
     timing['gnn_train_s'] = time.time() - t1
 
-    # 3) Ensemble: mean of the two calibrated probabilities, re-calibrated on the validation period
-    cal_e = IsotonicRegression(out_of_bounds='clip', y_min=0, y_max=1).fit((p_va['lgbm'] + p_va['gnn']) / 2, y[va])
-    p_va['ensemble'] = cal_e.predict((p_va['lgbm'] + p_va['gnn']) / 2)
-    p_te['ensemble'] = cal_e.predict((p_te['lgbm'] + p_te['gnn']) / 2)
+    # 3) Ensemble (stacking): a logistic regression on the two models' raw scores, fitted on the validation
+    #    period; the weaker model gets a smaller weight automatically, and the output is a probability
+    Z_va, Z_te = np.column_stack([raw_va, r_va]), np.column_stack([raw_te, r_te])
+    stack = LogisticRegression(C=1.0).fit(Z_va, y[va])
+    p_va['ensemble'], p_te['ensemble'] = stack.predict_proba(Z_va)[:, 1], stack.predict_proba(Z_te)[:, 1]
+    log(f'stacking weights: LightGBM {stack.coef_[0, 0]:.3f}, GNN {stack.coef_[0, 1]:.3f}')
 
     results = {}
     for name in ['lgbm', 'gnn', 'ensemble']:
@@ -81,11 +85,12 @@ def main(a):
     joblib.dump(lgbm, out / 'baseline.joblib')
     torch.save(model.state_dict(), out / 'gnn.pt')
     joblib.dump({'scaler': g_tr.scaler, 'n_node': g_tr.x.shape[1], 'n_edge': e.shape[1], 'calibrator': cal_g}, out / 'gnn_meta.joblib')
-    joblib.dump(cal_e, out / 'ensemble.joblib')
+    joblib.dump(stack, out / 'ensemble.joblib')
     metrics = {'data': {'source': 'IBM AMLworld HI-Small', 'n': t.height, 'laundering': int(y.sum()),
                         'split': {'train': len(tr), 'val': len(va), 'test': len(te)},
                         'test_period': [str(t['ts'][int(te[0])]), str(t['ts'][int(te[-1])])]},
-               'models': results, 'calibration': evaluate.calibration(y[te], p_te['ensemble']),
+               'models': results, 'stack_weights': {'lgbm': float(stack.coef_[0, 0]), 'gnn': float(stack.coef_[0, 1])},
+               'calibration': evaluate.calibration(y[te], p_te['ensemble']),
                'importance': dict(sorted(importance.items(), key=lambda kv: -kv[1])[:20]),
                'timing': {k: round(v, 1) for k, v in timing.items()}}
     (out / 'metrics.json').write_text(json.dumps(metrics, indent=2))
