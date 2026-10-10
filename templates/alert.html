@@ -1,0 +1,80 @@
+{% extends "base.html" %}{% set active = 'queue' %}
+{% block title %}Alert {{ a.row }}{% endblock %}
+{% block body %}
+<p class="crumbs"><a href="/">← Navbat</a></p>
+<div class="head-row">
+  <div>
+    <h1>Tranzaksiya #{{ a.row }} {% if a.injected %}<span class="tag">jonli qo'shilgan</span>{% endif %}</h1>
+    <p class="muted">{{ a.ts|dt }} · {{ a.rail }} · {{ a.amount_uzs|som }} (≈ {{ '{:,.0f}'.format(a.amount_usd).replace(',', ' ') }} USD)</p>
+  </div>
+  <div class="score {{ a.level }}">
+    <b>{{ a.prob|pct }}</b><span>pul yuvish ehtimoli</span>
+    <span class="pill {{ a.level }}">{{ a.level|level }} · navbatda {{ a.rank }}-o'rin / {{ '{:,}'.format(a.n).replace(',', ' ') }}</span>
+  </div>
+</div>
+
+<div class="cols">
+  <section class="card">
+    <h2>Kim → kimga</h2>
+    <div class="parties">
+      <div><span class="muted">Jo'natuvchi</span><a href="/account/{{ a.src|urlencode }}"><b>{{ a.src_short }}</b></a>
+        <span>{{ a.src_info.name or "bank mijozi emas / tashqi hisob" }}{% if a.src_info.persona %} · {{ PERSONAS.get(a.src_info.persona, '') }}, {{ a.src_info.city }}{% endif %}</span></div>
+      <div class="arrow">→</div>
+      <div><span class="muted">Qabul qiluvchi</span><a href="/account/{{ a.dst|urlencode }}"><b>{{ a.dst_short }}</b></a>
+        <span>{{ a.dst_info.name or "bank mijozi emas / tashqi hisob" }}{% if a.dst_info.persona %} · {{ PERSONAS.get(a.dst_info.persona, '') }}, {{ a.dst_info.city }}{% endif %}</span></div>
+    </div>
+    <h2>Ikki model</h2>
+    <div class="bars">
+      <div><span>LightGBM (tranzaksiya va hisoblar tarixi)</span><meter min="0" max="1" value="{{ a.p_lgbm }}"></meter><b>{{ a.p_lgbm|pct }}</b></div>
+      <div><span>GNN (hisoblar tarmog'i)</span><meter min="0" max="1" value="{{ a.p_gnn }}"></meter><b>{{ a.p_gnn|pct }}</b></div>
+    </div>
+    <p class="small muted">Yakuniy baho ikkala model ehtimollarining o'rtachasi, validatsiya davrida kalibrlangan.</p>
+  </section>
+
+  <section class="card">
+    <h2>Nima uchun (SHAP)</h2>
+    <ol class="reasons">
+    {% for r in a.reasons %}
+      <li class="{{ 'up' if r.up else 'down' }}">
+        <b>{{ r.title }}</b> <span class="tag">{{ 'xavfni oshiradi' if r.up else 'xavfni kamaytiradi' }}</span>
+        <p>{{ r.evidence }}</p>
+      </li>
+    {% endfor %}
+    </ol>
+    <p class="small muted">LightGBM'ning har bir belgi hissasi (TreeSHAP) ma'nosi bo'yicha guruhlangan; raqamlar shu tranzaksiyaning haqiqiy belgilari.</p>
+  </section>
+</div>
+
+<section class="card">
+  <h2>Dalil subgrafi: ikki hisob atrofidagi tranzaksiyalar (±7 kun)</h2>
+  {% set g = a.graph %}
+  <svg class="graph" viewBox="-1.05 -1.0 2.1 2.0" role="img" aria-label="Hisoblar orasidagi pul oqimlari">
+    <defs><marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="currentColor"/></marker></defs>
+    {% set pos = {} %}{% for n in g.nodes %}{% set _ = pos.update({n.id: n}) %}{% endfor %}
+    {% for e in g.edges %}{% set s = pos[e.src] %}{% set d = pos[e.dst] %}
+      <a href="/alert/{{ e.row }}"><line x1="{{ s.x }}" y1="{{ s.y * 0.9 }}" x2="{{ d.x }}" y2="{{ d.y * 0.9 }}"
+        class="edge {{ 'alert' if e.alert }} {{ 'r3' if e.risk >= 0.5 else 'r2' if e.risk >= 0.1 else 'r1' }}" marker-end="url(#ar)">
+        <title>{{ e.ts }} · {{ e.amount_uzs|som }} · xavf {{ e.risk|pct }}</title></line></a>
+    {% endfor %}
+    {% for n in g.nodes %}
+      <a href="/account/{{ n.id|urlencode }}"><circle cx="{{ n.x }}" cy="{{ n.y * 0.9 }}" r="{{ 0.055 if n.main else 0.03 }}" class="node {{ 'main' if n.main }}"><title>{{ n.id }}</title></circle>
+      <text x="{{ n.x }}" y="{{ n.y * 0.9 + (0.1 if n.main else 0.065) }}" class="lbl {{ 'main' if n.main }}">{{ n.label }}</text></a>
+    {% endfor %}
+  </svg>
+  <p class="small muted">Chiziq rangi: qizil ≥ 50%, sariq ≥ 10%, kulrang &lt; 10% xavf. Qalin chiziq shu alert. Har bir chiziq yoki hisob bosiladi.</p>
+</section>
+
+<section class="card" id="decision">
+  <h2>Xodim qarori</h2>
+  {% if a.decision %}{% set d = a.decision %}{% include "_decision.html" %}{% else %}
+  <form hx-post="/alert/{{ a.row }}/decision" hx-target="#decision-body" hx-swap="innerHTML" class="form">
+    <div class="seg radio" role="radiogroup" aria-label="Qaror">
+      {% for k, v in ACTIONS.items() %}<label><input type="radio" name="action" value="{{ k }}" required> {{ v }}</label>{% endfor %}
+    </div>
+    <label>Sabab <textarea name="reason" minlength="3" maxlength="500" required placeholder="Masalan: bir kunda 14 ta turli hisobdan pul yig'ilib, naqdlashtirilgan"></textarea></label>
+    <label>Xodim <input name="officer" minlength="2" maxlength="60" required placeholder="Ism Familiya"></label>
+    <button type="submit">Qarorni saqlash (audit log'ga yoziladi)</button>
+  </form>{% endif %}
+  <div id="decision-body"></div>
+</section>
+{% endblock %}

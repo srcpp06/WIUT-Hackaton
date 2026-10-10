@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="uz">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}QALQON{% endblock %} · QALQON</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <script src="/static/vendor/htmx.min.js" defer></script>
+</head>
+<body>
+  <header class="top">
+    <div class="wrap bar">
+      <a class="brand" href="/">QALQON</a>
+      <nav>
+        <a href="/" class="{{ 'on' if active == 'queue' }}">Navbat</a>
+        <a href="/inject" class="{{ 'on' if active == 'inject' }}">Jonli kiritish</a>
+        <a href="/upload" class="{{ 'on' if active == 'upload' }}">CSV</a>
+        <a href="/evidence" class="{{ 'on' if active == 'evidence' }}">Dalillar</a>
+        <a href="/audit" class="{{ 'on' if active == 'audit' }}">Audit</a>
+      </nav>
+    </div>
+  </header>
+  <main class="wrap">
+    {% if dev %}<div class="banner warn">DEV rejim: modellar vaqtincha sintetik demo ma'lumotda o'qitilgan. Haqiqiy modellar AMLworld'da o'qitilgach almashtiriladi.</div>{% endif %}
+    {% block body %}{% endblock %}
+  </main>
+  <footer class="wrap foot muted">
+    QALQON {{ VERSION }} · qarorni model emas, xodim qabul qiladi · tashqi API yo'q, hammasi shu serverda hisoblanadi
+  </footer>
+</body>
+</html>

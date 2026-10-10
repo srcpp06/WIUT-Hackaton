@@ -20,3 +20,6 @@ __pycache__/
 
 # Runtime state (audit log)
 var/
+
+# Demo data is generated (python -m src.generator), not committed
+data/demo/

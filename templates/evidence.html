@@ -1,0 +1,89 @@
+{% extends "base.html" %}{% set active = 'evidence' %}
+{% block title %}Dalillar{% endblock %}
+{% block body %}
+<h1>Dalillar: modellar qanchalik yaxshi</h1>
+{% if not m.models %}
+<div class="banner warn">Haqiqiy metrikalar hali yo'q: modellar AMLworld'da o'qitilgach shu yerda chiqadi.</div>
+{% else %}
+{% set d = m.data %}
+<p class="muted">Ma'lumot: {{ d.source }} — {{ '{:,}'.format(d.n).replace(',', ' ') }} ta tranzaksiya, {{ '{:,}'.format(d.laundering).replace(',', ' ') }} tasi pul yuvish. Vaqt bo'yicha bo'lingan: o'qitish {{ '{:,}'.format(d.split.train).replace(',', ' ') }}, validatsiya {{ '{:,}'.format(d.split.val).replace(',', ' ') }}, test {{ '{:,}'.format(d.split.test).replace(',', ' ') }} (eng oxirgi davr: {{ d.test_period[0][:16] }} — {{ d.test_period[1][:16] }}). Quyidagi hamma raqamlar modellar ko'rmagan test davrida o'lchangan.</p>
+
+<h2>Ablation: baseline, GNN va ansambl (test davri)</h2>
+<div class="scroll"><table class="grid">
+  <thead><tr><th>Model</th><th class="num">PR-AUC</th><th class="num">ROC-AUC</th><th class="num">F1</th><th class="num">Aniqlik</th><th class="num">Qamrov</th>
+  {% for b in m.models.ensemble.budget %}<th class="num">Top {{ '%g'|format(100 * b.top_share) }}%: aniqlik / qamrov</th>{% endfor %}</tr></thead>
+  <tbody>{% for key, name in [('lgbm', 'LightGBM (baseline)'), ('gnn', 'GNN (GraphSAGE)'), ('ensemble', 'Ansambl (ikkalasi)')] %}{% set r = m.models[key] %}
+    <tr><td><b>{{ name }}</b></td><td class="num"><b>{{ '%.3f'|format(r.pr_auc) }}</b></td><td class="num">{{ '%.3f'|format(r.roc_auc) }}</td>
+    <td class="num">{{ '%.3f'|format(r.f1_at_val_threshold.f1) }}</td><td class="num">{{ '%.1f'|format(100 * r.f1_at_val_threshold.precision) }}%</td><td class="num">{{ '%.1f'|format(100 * r.f1_at_val_threshold.recall) }}%</td>
+    {% for b in r.budget %}<td class="num">{{ '%.1f'|format(100 * b.precision) }}% / {{ '%.1f'|format(100 * b.recall) }}%</td>{% endfor %}</tr>
+  {% endfor %}</tbody>
+</table></div>
+<p class="small muted">PR-AUC: kamyob hodisalar uchun asosiy metrika (tasodifiy model = ulush {{ '%.2f'|format(100 * m.models.ensemble.base_rate) }}%). F1, aniqlik va qamrov — validatsiya davrida tanlangan chegara bilan. "Top X%": xodimlar faqat eng xavfli X% tranzaksiyani ko'rsa, ularning qanchasi haqiqatan pul yuvish (aniqlik) va jami pul yuvishning qancha qismi topiladi (qamrov).</p>
+
+<div class="cols">
+  <section class="card"><h2>Precision–Recall egri chiziqlari</h2><canvas id="pr" height="260"></canvas></section>
+  <section class="card"><h2>Kalibrlash (ansambl)</h2><canvas id="cal" height="260"></canvas>
+    <p class="small muted">Model "5%" desa, shunday tranzaksiyalarning taxminan 5% i haqiqatan pul yuvish bo'lishi kerak: nuqtalar diagonalga yaqin bo'lsa yaxshi.</p></section>
+</div>
+
+<section class="card"><h2>LightGBM uchun eng muhim belgilar</h2>
+  <ol class="cols3">{% for k, v in m.importance.items() %}<li><code>{{ k }}</code></li>{% endfor %}</ol>
+</section>
+{% endif %}
+
+{% if elliptic %}
+<section class="card"><h2>Tashqi tekshiruv: Elliptic (haqiqiy Bitcoin tranzaksiyalari grafi)</h2>
+  <p class="muted">{{ elliptic.note }}</p>
+  <div class="scroll"><table class="grid"><thead><tr><th>Model</th><th class="num">PR-AUC</th><th class="num">Illicit F1</th><th class="num">Aniqlik</th><th class="num">Qamrov</th></tr></thead>
+  <tbody>{% for r in elliptic.models %}<tr><td>{{ r.name }}</td><td class="num">{{ '%.3f'|format(r.pr_auc) }}</td><td class="num">{{ '%.3f'|format(r.f1) }}</td><td class="num">{{ '%.1f'|format(100 * r.precision) }}%</td><td class="num">{{ '%.1f'|format(100 * r.recall) }}%</td></tr>{% endfor %}</tbody></table></div>
+</section>
+{% endif %}
+
+{% if uzcheck %}
+<section class="card"><h2>UZ sintetik demo bankda tekshiruv</h2>
+  <p class="muted">{{ uzcheck.note }}</p>
+  <div class="scroll"><table class="grid"><thead><tr><th>Model</th><th class="num">PR-AUC</th><th class="num">Top 2%: qamrov</th></tr></thead>
+  <tbody>{% for r in uzcheck.models %}<tr><td>{{ r.name }}</td><td class="num">{{ '%.3f'|format(r.pr_auc) }}</td><td class="num">{{ '%.1f'|format(100 * r.recall_top2) }}%</td></tr>{% endfor %}</tbody></table></div>
+</section>
+{% endif %}
+
+<section class="card"><h2>Tezlik va narx (shu serverda, jonli o'lchov)</h2>
+  {% if live %}
+  <div class="tiles">
+    <div class="tile"><b>{{ '%.0f'|format(live.p50_ms) }} ms</b><span>tranzaksiyaga, mediana (p50)</span></div>
+    <div class="tile"><b>{{ '%.0f'|format(live.p95_ms) }} ms</b><span>p95</span></div>
+    <div class="tile"><b>{{ '%.0f'|format(live.cpu_ms) }} ms</b><span>CPU vaqti, o'rtacha</span></div>
+    <div class="tile"><b>${{ '%.2f'|format(live.usd_per_million) }}</b><span>1 mln tranzaksiyaga (CPU narxi)</span></div>
+  </div>
+  <p class="small muted">{{ live.n }} ta jonli so'rov bo'yicha: belgilar + LightGBM + GNN. Narx: Oracle A1 ro'yxat narxi (2 OCPU + 12 GB = $0.038/soat), server to'liq yuklangan deb. Tashqi API to'lovi yo'q.</p>
+  {% else %}<p class="muted">Hali jonli so'rov yo'q: "Jonli kiritish" yoki "CSV" sahifasida tranzaksiya qo'shing.</p>{% endif %}
+</section>
+
+<section class="card"><h2>Model qachon xato qiladi (cheklovlar)</h2>
+  <ul>
+    <li>Yangi, hali ko'rilmagan sxemalar: modellar AMLworld'dagi tipologiyalardan o'rgangan.</li>
+    <li>Tarixi yo'q yangi hisoblar (cold start): oynalardagi belgilar bo'sh bo'ladi.</li>
+    <li>O'quv ma'lumoti sintetik (IBM AMLworld); demo bank ham sintetik. Haqiqiy samaradorlik bankning o'z ma'lumotida pilotda o'lchanadi.</li>
+    <li>UZS → USD qat'iy kurs bilan o'giriladi; o'zbek to'lov kanallari AMLworld formatlariga yaqinlik bo'yicha moslangan (README'da e'lon qilingan).</li>
+  </ul>
+</section>
+
+{% if m.models %}
+<script src="/static/vendor/chart.umd.min.js"></script>
+<script>
+const M = {{ m.models|tojson }}, CAL = {{ m.calibration|tojson }};
+const css = getComputedStyle(document.documentElement), ink = css.getPropertyValue('--muted').trim();
+const series = [['lgbm', 'LightGBM', '#2a6fdb'], ['gnn', 'GNN', '#d9822b'], ['ensemble', 'Ansambl', '#1f9d55']];
+Chart.defaults.color = ink;
+new Chart(document.getElementById('pr'), {type: 'line', data: {datasets: series.map(([k, n, c]) => ({label: n, borderColor: c, backgroundColor: c, borderWidth: 2, pointRadius: 0,
+  data: M[k].pr_curve.recall.map((r, i) => ({x: r, y: M[k].pr_curve.precision[i]}))}))},
+  options: {parsing: false, animation: false, scales: {x: {type: 'linear', min: 0, max: 1, title: {display: true, text: 'Qamrov (recall)'}},
+    y: {min: 0, max: 1, title: {display: true, text: 'Aniqlik (precision)'}}}, plugins: {tooltip: {mode: 'nearest', intersect: false}}}});
+const mx = Math.max(...CAL.map(c => Math.max(c.pred, c.obs))) * 1.05;
+new Chart(document.getElementById('cal'), {type: 'scatter', data: {datasets: [
+  {label: "Kuzatilgan ulush", data: CAL.map(c => ({x: c.pred, y: c.obs})), backgroundColor: '#1f9d55', pointRadius: 5},
+  {label: 'Ideal', type: 'line', data: [{x: 0, y: 0}, {x: mx, y: mx}], borderColor: ink, borderDash: [4, 4], pointRadius: 0, borderWidth: 1}]},
+  options: {animation: false, scales: {x: {min: 0, max: mx, title: {display: true, text: "Bashorat qilingan ehtimol"}}, y: {min: 0, max: mx, title: {display: true, text: "Haqiqiy ulush"}}}}});
+</script>
+{% endif %}
+{% endblock %}

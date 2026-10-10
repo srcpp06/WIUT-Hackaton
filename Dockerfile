@@ -8,6 +8,8 @@ RUN pip install --no-cache-dir --extra-index-url https://download.pytorch.org/wh
 COPY src/ src/
 COPY templates/ templates/
 COPY static/ static/
+# The demo bank is generated, not shipped: same seed, same data (CC0)
+RUN python -m src.generator --out data/demo --accounts 2000 --seed 7
 RUN useradd -u 1000 -m app && mkdir -p var && chown app var
 USER app
 EXPOSE 8000

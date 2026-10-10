@@ -1,0 +1,14 @@
+{% extends "base.html" %}{% set active = 'audit' %}
+{% block title %}Audit{% endblock %}
+{% block body %}
+<h1>Audit log</h1>
+<p class="{{ 'ok-text' if ok else 'err-text' }}"><b>{{ '✓ Zanjir butun' if ok else '✗ Zanjir buzilgan: #' ~ broken ~ '-yozuvdan boshlab' }}</b> · {{ n }} ta yozuv. Har bir yozuv oldingisining SHA-256 hash'ini saqlaydi: o'rtadagi yozuvni o'zgartirish zanjirni buzadi.</p>
+<div class="scroll"><table class="grid">
+  <thead><tr><th>#</th><th>Vaqt (UTC)</th><th>Alert</th><th>Qaror</th><th>Xodim</th><th>Sabab</th><th class="num">Baho</th><th>Hash</th></tr></thead>
+  <tbody>{% for e in entries %}
+    <tr><td>{{ e.seq }}</td><td>{{ e.ts[:16].replace('T', ' ') }}</td><td><a href="/alert/{{ e.alert_id }}">#{{ e.alert_id }}</a></td>
+    <td>{{ ACTIONS.get(e.action, e.action) }}</td><td>{{ e.officer }}</td><td>{{ e.reason }}</td><td class="num">{{ '%.1f'|format(100 * e.prob) }}%</td>
+    <td class="mono small">{{ e.hash[:10] }}…</td></tr>
+  {% else %}<tr><td colspan="8" class="muted">Hali qaror yo'q.</td></tr>{% endfor %}</tbody>
+</table></div>
+{% endblock %}

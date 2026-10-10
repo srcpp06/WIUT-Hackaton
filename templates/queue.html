@@ -1,0 +1,17 @@
+{% extends "base.html" %}{% set active = 'queue' %}
+{% block title %}Navbat{% endblock %}
+{% block body %}
+<h1>Alertlar navbati</h1>
+<p class="muted">Demo bank: {{ '{:,}'.format(q.counts.high + q.counts.medium + q.counts.low).replace(',', ' ') }} ta tranzaksiya (oxirgisi {{ now|dt }}), har biri LightGBM va GNN tomonidan baholangan. Eng xavflilari birinchi.{% if n_injected %} Jonli qo'shilganlar: {{ n_injected }} ta.{% endif %}</p>
+<div class="tiles">
+  <div class="tile high"><b>{{ q.counts.high }}</b><span>Yuqori (top 0.5%)</span></div>
+  <div class="tile medium"><b>{{ q.counts.medium }}</b><span>O'rta (top 2% gacha)</span></div>
+  <div class="tile"><b>{{ '{:,}'.format(q.counts.low).replace(',', ' ') }}</b><span>Past</span></div>
+</div>
+<div class="seg" role="group" aria-label="Daraja bo'yicha filtr">
+  <a href="/" hx-get="/" hx-target="#queue" hx-push-url="true" class="{{ 'on' if not level }}">Hammasi</a>
+  <a href="/?level=high" hx-get="/?level=high" hx-target="#queue" hx-push-url="true" class="{{ 'on' if level == 'high' }}">Yuqori</a>
+  <a href="/?level=medium" hx-get="/?level=medium" hx-target="#queue" hx-push-url="true" class="{{ 'on' if level == 'medium' }}">O'rta</a>
+</div>
+<div id="queue">{% include "_queue_table.html" %}</div>
+{% endblock %}

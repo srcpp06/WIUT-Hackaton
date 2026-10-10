@@ -1,0 +1,15 @@
+{% extends "base.html" %}{% set active = 'queue' %}
+{% block title %}Hisob{% endblock %}
+{% block body %}
+<p class="crumbs"><a href="/">← Navbat</a></p>
+<h1>{{ acc.info.name or acc.node }}</h1>
+<p class="muted">{{ acc.node }}{% if acc.info.persona %} · {{ PERSONAS.get(acc.info.persona, '') }} · {{ acc.info.city }}{% endif %} · {{ acc.n }} ta tranzaksiya · eng yuqori baho {{ acc.max_prob|pct }}</p>
+<div class="scroll"><table class="grid">
+  <thead><tr><th>Vaqt</th><th>Yo'nalish</th><th>Qarshi tomon</th><th class="num">Summa</th><th>Kanal</th><th class="num">Xavf</th><th>Daraja</th></tr></thead>
+  <tbody>{% for x in acc.rows %}
+    <tr class="lvl-{{ x.level }}" onclick="location='/alert/{{ x.row }}'"><td>{{ x.ts|dt }}</td><td>{{ 'chiqim' if x.direction == 'out' else 'kirim' }}</td>
+    <td>{{ x.dst_short if x.direction == 'out' else x.src_short }}</td><td class="num">{{ x.amount_uzs|som }}</td><td>{{ x.rail }}</td>
+    <td class="num"><b>{{ x.prob|pct }}</b></td><td><span class="pill {{ x.level }}">{{ x.level|level }}</span></td></tr>
+  {% endfor %}</tbody>
+</table></div>
+{% endblock %}
