@@ -31,6 +31,29 @@ def pr_points(y, prob, n=150):
     return {'precision': p[keep].round(4).tolist(), 'recall': r[keep].round(4).tolist()}
 
 
+def uz_check(lgbm, model, scaler, cal_g, stack, log):
+    """How well do the AMLworld-trained models find the schemes planted in our Uzbek demo bank?
+    A transfer check on synthetic data (different generator, rails and currency), not a headline metric."""
+    from sklearn.metrics import average_precision_score
+    from src.generator import generate
+    from src.ingest import from_uz
+    tx, truth, _ = generate(n_accounts=2000, seed=7)
+    t = from_uz(tx.join(truth.select('row', 'label'), on='row'))
+    y = t['label'].to_numpy(); X = build(t)
+    raw_l, raw_g = lgbm.raw(X), gnn.predict(model, gnn.Graph(t, scaler), gnn.edge_attrs(t))
+    p = {'LightGBM': lgbm.calibrator.predict(raw_l), 'GNN': cal_g.predict(raw_g),
+         'Ansambl': stack.predict_proba(np.column_stack([raw_l, raw_g]))[:, 1]}
+    k = int(0.02 * len(y)); rows = []
+    for name, q in p.items():
+        top = np.argsort(-q, kind='stable')[:k]
+        rows.append({'name': name, 'pr_auc': float(average_precision_score(y, q)), 'recall_top2': float(y[top].sum() / y.sum())})
+        log(f'UZ demo bank, {name}: PR-AUC {rows[-1]["pr_auc"]:.3f}, recall in top 2% {rows[-1]["recall_top2"]:.1%}')
+    note = (f"AMLworld'da o'qitilgan modellar o'zbek demo bankida ({t.height:,} ta tranzaksiya, {int(y.sum())} tasi ekilgan sxemalarda, "
+            f"ulush {y.mean():.2%}). Bu ma'lumot ham sintetik va generatorni o'zimiz yozganmiz, shuning uchun bu asosiy metrika emas, "
+            "faqat modellar boshqa kanal va valyutaga ko'chganda ishlashini ko'rsatadi.").replace(',', ' ')
+    return {'note': note, 'models': rows}
+
+
 def main(a):
     t0 = time.time(); timing = {}
     log = lambda s: print(f'[{time.time() - t0:6.0f}s] {s}', flush=True)
@@ -81,6 +104,8 @@ def main(a):
     timing['total_s'] = time.time() - t0
     timing['max_rss_mb'] = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024
 
+    uz = uz_check(lgbm, model, g_tr.scaler, cal_g, stack, log)
+
     out = Path(a.out); out.mkdir(exist_ok=True)
     joblib.dump(lgbm, out / 'baseline.joblib')
     torch.save(model.state_dict(), out / 'gnn.pt')
@@ -94,6 +119,7 @@ def main(a):
                'importance': dict(sorted(importance.items(), key=lambda kv: -kv[1])[:20]),
                'timing': {k: round(v, 1) for k, v in timing.items()}}
     (out / 'metrics.json').write_text(json.dumps(metrics, indent=2))
+    (out / 'uz_check.json').write_text(json.dumps(uz, indent=2, ensure_ascii=False))
     log(f'artifacts written to {out}/')
 
 

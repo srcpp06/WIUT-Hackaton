@@ -24,8 +24,9 @@ UZS_PER_USD = 12_800.0   # fixed demo rate (assumption): converts UZS amounts to
 
 def read_amlworld(path, n_rows=None):
     """AMLworld *_Trans.csv -> internal schema, sorted by time."""
-    raw = pl.read_csv(path, n_rows=n_rows, schema_overrides={'From Bank': pl.Utf8, 'To Bank': pl.Utf8})
+    raw = pl.read_csv(path, n_rows=n_rows, infer_schema=False)   # every column as text: ids must stay ids
     raw.columns = AMLWORLD_COLUMNS
+    raw = raw.with_columns(pl.col('Amount Received', 'Amount Paid').cast(pl.Float64), pl.col('Is Laundering').cast(pl.Int8))
     t = raw.select(
         ts=pl.col('Timestamp').str.to_datetime('%Y/%m/%d %H:%M'),
         src_bank=pl.col('From Bank'), dst_bank=pl.col('To Bank'),
