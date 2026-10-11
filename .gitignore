@@ -1,5 +1,5 @@
 # Private brief: local only (ask before publishing)
-QALQON_BRIEF.md
+*BRIEF.md
 
 # Data: raw downloads stay local; only the generator and small samples are committed
 data/raw/

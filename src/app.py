@@ -1,4 +1,4 @@
-"""QALQON web app: FastAPI + server-rendered Jinja pages (HTMX for partial updates, Chart.js for charts)."""
+"""FlowLens web app: FastAPI + server-rendered Jinja pages (HTMX for partial updates, Chart.js for charts)."""
 import io
 import json
 from contextlib import asynccontextmanager
@@ -19,10 +19,11 @@ from .ingest import UZ_COLUMNS, UZ_RAILS
 from .service import Service, scheme_rows
 
 ROOT = Path(__file__).resolve().parent.parent
-VERSION = "0.3.0"
-LEVELS = {'high': 'Yuqori', 'medium': "O'rta", 'low': 'Past'}
-ACTIONS = {'confirm': 'Shubhali deb tasdiqlash', 'escalate': "Eskalatsiya (moliyaviy monitoring bo'limiga)",
-           'dismiss': 'Asossiz signal (rad etish)'}
+BRAND = "FlowLens"
+VERSION = "0.4.0"
+LEVELS = {'high': 'High', 'medium': 'Medium', 'low': 'Low'}
+ACTIONS = {'confirm': 'Confirm as suspicious', 'escalate': 'Escalate to the financial monitoring unit',
+           'dismiss': 'Dismiss (false alarm)'}
 state = {}
 
 
@@ -31,24 +32,24 @@ async def lifespan(app):
     try:
         state['svc'] = Service()
     except FileNotFoundError as e:   # models or demo data missing: serve the pages with a clear message
-        state['error'] = f"Model yoki demo ma'lumot topilmadi: {e.filename}"
+        state['error'] = f"Model or demo data not found: {e.filename}"
     yield
 
 
-app = FastAPI(title="QALQON", version=VERSION, lifespan=lifespan)
+app = FastAPI(title=BRAND, version=VERSION, lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=ROOT / "static"), name="static")
 templates = Jinja2Templates(directory=ROOT / "templates")
 templates.env.filters.update(
-    som=lambda v: f"{v:,.0f}".replace(',', ' ') + " so'm",
+    uzs=lambda v: f"{v:,.0f} UZS",
     pct=lambda v: f"{100 * v:.1f}%",
     dt=lambda v: v.strftime('%Y-%m-%d %H:%M') if hasattr(v, 'strftime') else str(v)[:16],
     level=lambda v: LEVELS.get(str(v), str(v)))
-templates.env.globals.update(VERSION=VERSION, LEVELS=LEVELS, ACTIONS=ACTIONS, PERSONAS=PERSONAS)
+templates.env.globals.update(BRAND=BRAND, VERSION=VERSION, LEVELS=LEVELS, ACTIONS=ACTIONS, PERSONAS=PERSONAS)
 
 
 def svc() -> Service:
     if 'svc' not in state:
-        raise HTTPException(503, state.get('error', 'Servis ishga tushmoqda'))
+        raise HTTPException(503, state.get('error', 'The service is starting'))
     return state['svc']
 
 
@@ -78,7 +79,7 @@ def home(request: Request, level: Literal['high', 'medium'] | None = None, offse
 def alert_page(request: Request, row: int):
     s = svc()
     if row not in s.pos:
-        raise HTTPException(404, f"Tranzaksiya topilmadi: {row}")
+        raise HTTPException(404, f"Transaction not found: {row}")
     return page(request, 'alert.html', a=s.alert(row), dev=s.m.metrics.get('dev', False))
 
 
@@ -87,7 +88,7 @@ def decide(request: Request, row: int, action: Literal['confirm', 'escalate', 'd
            reason: str = Form(..., min_length=3, max_length=500), officer: str = Form(..., min_length=2, max_length=60)):
     s = svc()
     if row not in s.pos:
-        raise HTTPException(404, f"Tranzaksiya topilmadi: {row}")
+        raise HTTPException(404, f"Transaction not found: {row}")
     a = s.alert(row)   # log exactly what the officer saw
     e = s.audit.append(alert_id=row, action=action, reason=reason.strip(), officer=officer.strip(),
                        prob=round(a['prob'], 4), p_lgbm=round(a['p_lgbm'], 4), p_gnn=round(a['p_gnn'], 4),
@@ -114,10 +115,10 @@ def inject_tx(request: Request, src: str = Form(...), dst_bank: str = Form(...),
               minutes: int = Form(1, ge=1, le=1440)):
     s = svc()
     if rail not in UZ_RAILS or dst_bank not in BANKS or ':' not in src:
-        raise HTTPException(422, "Kanal, bank yoki jo'natuvchi noto'g'ri")
+        raise HTTPException(422, "Unknown channel, bank or sender")
     acct = ''.join(ch for ch in dst_account if ch.isdigit())
     if not 8 <= len(acct) <= 20:
-        raise HTTPException(422, "Qabul qiluvchi hisob raqami 8–20 ta raqamdan iborat bo'lishi kerak")
+        raise HTTPException(422, "The receiver's account number must have 8 to 20 digits")
     sb, sa = src.split(':', 1)
     rows = pl.DataFrame([(s.now() + timedelta(minutes=minutes), sb, sa, dst_bank, acct, round(amount, 2), rail)],
                         schema=list(UZ_COLUMNS), orient='row').with_columns(pl.col('ts').cast(pl.Datetime('us')))
@@ -130,7 +131,7 @@ def inject_scheme(request: Request, target: str = Form(...), kind: Literal['fan_
                   n: int = Form(10, ge=3, le=30)):
     s = svc()
     if target not in set(s.accounts['node'].to_list()):
-        raise HTTPException(422, "Hisob topilmadi")
+        raise HTTPException(422, "Account not found")
     res = s.inject(scheme_rows(kind, target, s.now(), s.accounts, np.random.default_rng(), n=n))
     return page(request, '_injected.html', res=res, items=[s.alert(r) for r in res['rows']])
 
@@ -152,7 +153,7 @@ async def upload(request: Request, file: UploadFile = File(...)):
     data = await file.read(20_000_001)
     try:
         if len(data) > 20_000_000:
-            raise ValueError("Fayl 20 MB dan katta.")
+            raise ValueError("The file is larger than 20 MB.")
         result = s.score_frame(parse_csv(data))
         return page(request, 'upload.html', result=result, error=None, filename=file.filename)
     except ValueError as e:
@@ -166,7 +167,7 @@ def sample_csv():
     df = s.base.filter(pl.col('ts') >= s.base['ts'].max() - timedelta(days=2)).drop('row')
     buf = io.StringIO(); df.write_csv(buf)
     return PlainTextResponse(buf.getvalue(), media_type='text/csv',
-                             headers={'Content-Disposition': 'attachment; filename="qalqon_namuna.csv"'})
+                             headers={'Content-Disposition': 'attachment; filename="flowlens_sample.csv"'})
 
 
 @app.get("/evidence", response_class=HTMLResponse, include_in_schema=False)
@@ -192,7 +193,7 @@ class Tx(BaseModel):
     dst_bank: str = Field(min_length=1, max_length=40)
     dst_account: str = Field(min_length=1, max_length=40)
     amount_uzs: float = Field(gt=0, le=1e13, allow_inf_nan=False)
-    rail: Literal['Humo', 'Uzcard', 'Click', 'Payme', 'Uzum', "Bank o'tkazmasi", 'Naqd', 'SWIFT', 'Kripto']
+    rail: Literal['Humo', 'Uzcard', 'Click', 'Payme', 'Uzum', 'Bank transfer', 'Cash', 'SWIFT', 'Crypto']
 
 
 class Batch(BaseModel):
@@ -219,31 +220,31 @@ def load_json(p):
 
 
 def parse_csv(data: bytes) -> pl.DataFrame:
-    """CSV with the UZ columns -> validated frame, or ValueError with an Uzbek message."""
+    """CSV with the UZ columns -> validated frame, or ValueError with a message for the user."""
     try:
         df = pl.read_csv(io.BytesIO(data), infer_schema=False)
     except Exception:
-        raise ValueError("CSV o'qib bo'lmadi: vergul bilan ajratilgan, sarlavha qatori bor fayl kerak.")
+        raise ValueError("Could not read the CSV: a comma-separated file with a header row is expected.")
     missing = [c for c in UZ_COLUMNS if c not in df.columns]
     if missing:
-        raise ValueError(f"Ustunlar yetishmaydi: {', '.join(missing)}. Kerakli ustunlar: {', '.join(UZ_COLUMNS)}.")
+        raise ValueError(f"Missing columns: {', '.join(missing)}. Required columns: {', '.join(UZ_COLUMNS)}.")
     if not 10 <= df.height <= 50_000:
-        raise ValueError(f"Qatorlar soni 10 dan 50 000 gacha bo'lishi kerak (hozir {df.height}).")
+        raise ValueError(f"The file must have 10 to 50,000 rows (it has {df.height:,}).")
     c = pl.col
     df = df.select(list(UZ_COLUMNS)).with_columns(
         c('ts').str.strip_chars().str.to_datetime(strict=False, time_unit='us'),
         c('amount_uzs').str.strip_chars().str.replace_all(' ', '').cast(pl.Float64, strict=False),
         *[c(k).str.strip_chars() for k in ('src_bank', 'src_account', 'dst_bank', 'dst_account', 'rail')])
-    checks = [(c('ts').is_null(), "sana/vaqt noto'g'ri (masalan: 2026-09-30 14:05:00)"),
-              (c('amount_uzs').is_null() | (c('amount_uzs') <= 0), "summa musbat son bo'lishi kerak"),
-              (~c('rail').is_in(list(UZ_RAILS)), f"kanal quyidagilardan biri bo'lishi kerak: {', '.join(UZ_RAILS)}"),
+    checks = [(c('ts').is_null(), "invalid date/time (example: 2026-09-30 14:05:00)"),
+              (c('amount_uzs').is_null() | (c('amount_uzs') <= 0), "amount must be a positive number"),
+              (~c('rail').is_in(list(UZ_RAILS)), f"rail must be one of: {', '.join(UZ_RAILS)}"),
               (c('src_account').is_null() | c('dst_account').is_null() | c('src_bank').is_null() | c('dst_bank').is_null(),
-               "bank va hisob ustunlari bo'sh bo'lmasligi kerak")]
+               "bank and account columns must not be empty")]
     errors = []
     for cond, msg in checks:
         bad = df.with_row_index('i').filter(cond.fill_null(True))['i']
         if len(bad):
-            errors.append(f"{msg} (qatorlar: {', '.join(str(i + 2) for i in bad[:5].to_list())}{' …' if len(bad) > 5 else ''})")
+            errors.append(f"{msg} (rows: {', '.join(str(i + 2) for i in bad[:5].to_list())}{' …' if len(bad) > 5 else ''})")
     if errors:
         raise ValueError('; '.join(errors))
     return df

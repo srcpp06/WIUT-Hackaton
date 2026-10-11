@@ -102,18 +102,22 @@ def main():
         probs[name] = IsotonicRegression(out_of_bounds='clip', y_min=0, y_max=1).fit(raw[va], y[va]).predict(raw)
     Z = np.column_stack([np.log(raw_l / (1 - raw_l + 1e-9) + 1e-9), raw_g])   # stacking on raw log-odds, fitted on validation
     stack = LogisticRegression(C=1.0).fit(Z[va], y[va])
-    probs['Ansambl (stacking)'] = stack.predict_proba(Z)[:, 1]
+    probs['Ensemble (stacking)'] = stack.predict_proba(Z)[:, 1]
     print(f'stacking weights: LightGBM {stack.coef_[0, 0]:.3f}, GraphSAGE {stack.coef_[0, 1]:.3f}', flush=True)
     for name, p in probs.items():
         thr = best_f1_threshold(y[va], p[va]); r = f1_at(y[te], p[te], thr)
         out.append({'name': name, 'pr_auc': float(average_precision_score(y[te], p[te])), 'f1': r['f1'],
                     'precision': r['precision'], 'recall': r['recall']})
         print(f'{name:10s} test PR-AUC {out[-1]["pr_auc"]:.4f}  illicit F1 {r["f1"]:.4f}  P {r["precision"]:.3f}  R {r["recall"]:.3f}', flush=True)
-    note = (f"Elliptic (Weber va boshq., 2019): {len(f):,} ta Bitcoin tranzaksiyasi, {ei.shape[1]:,} ta bog'lanish. "
-            f"O'qitish 1–29, validatsiya 30–34, test 35–49 vaqt qadamlari ({te.sum():,} ta label'li tranzaksiya). "
-            "Boshqa soha (kripto, tranzaksiya = tugun), shuning uchun bu bank modelini emas, yondashuvning o'zini tekshiradi.").replace(',', ' ')
+    note = elliptic_note(len(f), ei.shape[1], int(te.sum()))
     Path('models').mkdir(exist_ok=True)
     Path('models/elliptic.json').write_text(json.dumps({'note': note, 'models': out}, indent=2, ensure_ascii=False))
+
+
+def elliptic_note(n_tx, n_edges, n_test):
+    return (f"Elliptic (Weber et al., 2019): {n_tx:,} Bitcoin transactions, {n_edges:,} edges. Time steps 1–29 train, "
+            f"30–34 validation, 35–49 test ({n_test:,} labelled transactions). A different domain (crypto, a transaction is "
+            "a node), so this checks the approach itself, not the bank model.")
 
 
 if __name__ == '__main__':

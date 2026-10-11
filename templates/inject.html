@@ -1,58 +1,58 @@
 {% extends "base.html" %}{% set active = 'inject' %}
-{% block title %}Jonli kiritish{% endblock %}
+{% block title %}Live input{% endblock %}
 {% block body %}
-<h1>Jonli kiritish</h1>
-<p class="muted">Demo bankka yangi tranzaksiya yoki butun sxema qo'shing: belgilar shu zahoti hisoblanadi, ikkala model baholaydi, navbat yangilanadi. Model nima qo'shilganini bilmaydi, faqat tranzaksiyalarni ko'radi. Demo vaqti: {{ now|dt }}.{% if n_injected %} Hozircha {{ n_injected }} ta qo'shilgan.{% endif %}</p>
+<h1>Live input</h1>
+<p class="muted">Add a new transaction or a whole scheme to the demo bank: features are computed on the spot, both models score it and the queue updates. The models are not told what was added; they only see the transactions. Demo time: {{ now|dt }}.{% if n_injected %} Added so far: {{ n_injected }}.{% endif %}</p>
 
 <div class="cols">
 <section class="card">
-  <h2>1. Bitta tranzaksiya</h2>
+  <h2>1. One transaction</h2>
   <form hx-post="/inject/tx" hx-target="#result" class="form">
-    <label>Jo'natuvchi (demo mijoz)
+    <label>Sender (demo customer)
       <select name="src" required>
         {% for kind, accts in personas.items() %}<optgroup label="{{ PERSONAS.get(kind, kind) }}">
           {% for x in accts %}<option value="{{ x.node }}">{{ x.name }} · {{ x.city }} · {{ x.node.split(':')[0] }} ·{{ x.node[-4:] }}</option>{% endfor %}
         </optgroup>{% endfor %}
       </select></label>
     <div class="row2">
-      <label>Qabul qiluvchi banki <select name="dst_bank">{% for b in banks %}<option>{{ b }}</option>{% endfor %}</select></label>
-      <label>Hisob raqami <input name="dst_account" required inputmode="numeric" placeholder="20208000123456789012" pattern="[0-9 ]{8,24}"></label>
+      <label>Receiver's bank <select name="dst_bank">{% for b in banks %}<option>{{ b }}</option>{% endfor %}</select></label>
+      <label>Account number <input name="dst_account" required inputmode="numeric" placeholder="20208000123456789012" pattern="[0-9 ]{8,24}"></label>
     </div>
     <div class="row2">
-      <label>Summa (so'm) <input name="amount" type="number" min="1000" max="10000000000" step="1000" value="9500000" required></label>
-      <label>Kanal <select name="rail">{% for r in rails %}<option>{{ r }}</option>{% endfor %}</select></label>
+      <label>Amount (UZS) <input name="amount" type="number" min="1000" max="10000000000" step="1000" value="9500000" required></label>
+      <label>Channel <select name="rail">{% for r in rails %}<option>{{ r }}</option>{% endfor %}</select></label>
     </div>
-    <label>Demo vaqtidan necha daqiqa keyin <input name="minutes" type="number" min="1" max="1440" value="5"></label>
-    <button type="submit">Qo'shish va baholash</button>
+    <label>Minutes after the demo time <input name="minutes" type="number" min="1" max="1440" value="5"></label>
+    <button type="submit">Add and score</button>
   </form>
 </section>
 
 <section class="card">
-  <h2>2. Butun sxema</h2>
+  <h2>2. A whole scheme</h2>
   <form hx-post="/inject/scheme" hx-target="#result" class="form">
-    <label>Markaziy hisob
+    <label>Central account
       <select name="target" required>
         {% for kind, accts in personas.items() %}<optgroup label="{{ PERSONAS.get(kind, kind) }}">
           {% for x in accts %}<option value="{{ x.node }}">{{ x.name }} · {{ x.city }} ·{{ x.node[-4:] }}</option>{% endfor %}
         </optgroup>{% endfor %}
       </select></label>
-    <label>Sxema
+    <label>Scheme
       <select name="kind">
-        <option value="fan_out">Bir hisobdan ko'p hisobga tarqatish (fan-out)</option>
-        <option value="fan_in">Mule: ko'p hisobdan yig'ib, naqdlashtirish (fan-in)</option>
-        <option value="cycle">Aylanma o'tkazmalar (cycle, 4 hisob)</option>
+        <option value="fan_out">Fan-out: one account pays many accounts</option>
+        <option value="fan_in">Mule fan-in: collect from many accounts, then cash out</option>
+        <option value="cycle">Cycle: transfers around 4 accounts and back</option>
       </select></label>
-    <label>Tranzaksiyalar soni <input name="n" type="number" min="3" max="30" value="10"></label>
-    <button type="submit">Sxemani qo'shish va baholash</button>
+    <label>Number of transactions <input name="n" type="number" min="3" max="30" value="10"></label>
+    <button type="submit">Add the scheme and score it</button>
   </form>
-  <form method="post" action="/inject/reset" class="inline"><button class="ghost" type="submit">Demo bankni boshlang'ich holatga qaytarish</button></form>
+  <form method="post" action="/inject/reset" class="inline"><button class="ghost" type="submit">Reset the demo bank to its initial state</button></form>
 </section>
 </div>
 
 <section id="result"></section>
 
 <section class="card">
-  <h2>Model eng xavfli deb topgan hisoblar</h2>
-  <ul class="plain">{% for x in risky %}<li><a href="/account/{{ x.node|urlencode }}">{{ x.name or x.node }}</a> · {{ x.bank }} · eng yuqori baho {{ x.prob|pct }}</li>{% endfor %}</ul>
+  <h2>Accounts the model finds riskiest</h2>
+  <ul class="plain">{% for x in risky %}<li><a href="/account/{{ x.node|urlencode }}">{{ x.name or x.node }}</a> · {{ x.bank }} · highest score {{ x.prob|pct }}</li>{% endfor %}</ul>
 </section>
 {% endblock %}

@@ -35,16 +35,19 @@ def uz_check(lgbm, model, scaler, cal_g, stack, log):
     y = t['label'].to_numpy(); X = build(t)
     raw_l, raw_g = lgbm.raw(X), gnn.predict(model, gnn.Graph(t, scaler), gnn.edge_attrs(t))
     p = {'LightGBM': lgbm.calibrator.predict(raw_l), 'GNN': cal_g.predict(raw_g),
-         'Ansambl': stack.predict_proba(np.column_stack([raw_l, raw_g]))[:, 1]}
+         'Ensemble': stack.predict_proba(np.column_stack([raw_l, raw_g]))[:, 1]}
     k = int(0.02 * len(y)); rows = []
     for name, q in p.items():
         top = np.argsort(-q, kind='stable')[:k]
         rows.append({'name': name, 'pr_auc': float(average_precision_score(y, q)), 'recall_top2': float(y[top].sum() / y.sum())})
         log(f'UZ demo bank, {name}: PR-AUC {rows[-1]["pr_auc"]:.3f}, recall in top 2% {rows[-1]["recall_top2"]:.1%}')
-    note = (f"AMLworld'da o'qitilgan modellar o'zbek demo bankida ({t.height:,} ta tranzaksiya, {int(y.sum())} tasi ekilgan sxemalarda, "
-            f"ulush {y.mean():.2%}). Bu ma'lumot ham sintetik va generatorni o'zimiz yozganmiz, shuning uchun bu asosiy metrika emas, "
-            "faqat modellar boshqa kanal va valyutaga ko'chganda ishlashini ko'rsatadi.").replace(',', ' ')
-    return {'note': note, 'models': rows}
+    return {'note': uz_note(t.height, int(y.sum())), 'models': rows}
+
+
+def uz_note(n, planted):
+    return (f"Models trained on AMLworld, run on the Uzbek demo bank ({n:,} transactions, {planted:,} of them in planted schemes, "
+            f"share {planted / n:.2%}). This data is synthetic too and we wrote its generator ourselves, so this is not a headline "
+            "metric: it only shows how the models carry over to other payment rails and another currency.")
 
 
 def main(a):

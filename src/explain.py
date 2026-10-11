@@ -1,4 +1,4 @@
-"""Why an alert was raised: LightGBM TreeSHAP grouped into plain-Uzbek reasons, each with the facts
+"""Why an alert was raised: LightGBM TreeSHAP grouped into plain-English reasons, each with the facts
 behind it, plus the evidence subgraph (the transactions around the two accounts)."""
 from datetime import timedelta
 
@@ -7,22 +7,22 @@ import polars as pl
 
 from .ingest import UZS_PER_USD
 
-# (key, Uzbek title, rule on the feature name); the first matching rule wins
+# (key, title, rule on the feature name); the first matching rule wins
 GROUPS = [
-    ('fan_in', "Qabul qiluvchiga ko'p yangi hisobdan pul kelmoqda (yig'ish)", lambda c: c.startswith(('r_cp_in', 'r_n_in'))),
-    ('fan_out', "Jo'natuvchi pulni ko'p yangi hisobga tarqatmoqda", lambda c: c.startswith(('s_cp_out', 's_n_out'))),
-    ('pass', "Pul hisobdan tez o'tib ketmoqda (tranzit)",
+    ('fan_in', 'Receiver is collecting money from many new accounts', lambda c: c.startswith(('r_cp_in', 'r_n_in'))),
+    ('fan_out', 'Sender is spreading money across many new accounts', lambda c: c.startswith(('s_cp_out', 's_n_out'))),
+    ('pass', 'Money passes through the account quickly',
      lambda c: c in ('s_prev_in', 's_pass_1d', 'amt_vs_s_in_1d', 'r_prev_in') or c.startswith(('s_usd_in', 'r_usd_out'))),
-    ('relation', "Jo'natuvchi va qabul qiluvchi o'rtasidagi aloqa tarixi", lambda c: c.startswith('pair_')),
-    ('history', "Hisoblarning yoshi va faolligi", lambda c: c.endswith(('_age', '_n_before', '_prev_any'))),
-    ('amount', "To'lov summasi", lambda c: c == 'log_usd'),
-    ('rail', "To'lov kanali", lambda c: c == 'fmt'),
-    ('time', "To'lov vaqti", lambda c: c in ('hour', 'weekday')),
-    ('structure', "Bank ichidagi yoki o'z hisobiga o'tkazma", lambda c: c in ('same_bank', 'self_loop')),
-    ('volume', "Hisoblarning oxirgi kunlardagi aylanmasi", lambda c: True),
+    ('relation', 'Payment history between sender and receiver', lambda c: c.startswith('pair_')),
+    ('history', 'Age and activity of the accounts', lambda c: c.endswith(('_age', '_n_before', '_prev_any'))),
+    ('amount', 'Payment amount', lambda c: c == 'log_usd'),
+    ('rail', 'Payment channel', lambda c: c == 'fmt'),
+    ('time', 'Time of payment', lambda c: c in ('hour', 'weekday')),
+    ('structure', 'Same-bank or own-account transfer', lambda c: c in ('same_bank', 'self_loop')),
+    ('volume', 'Recent turnover of the accounts', lambda c: True),
 ]
 TITLES = {k: t for k, t, _ in GROUPS}
-WEEKDAYS = {1: 'dushanba', 2: 'seshanba', 3: 'chorshanba', 4: 'payshanba', 5: 'juma', 6: 'shanba', 7: 'yakshanba'}
+WEEKDAYS = {1: 'Monday', 2: 'Tuesday', 3: 'Wednesday', 4: 'Thursday', 5: 'Friday', 6: 'Saturday', 7: 'Sunday'}
 
 
 def group_of(c):
@@ -30,17 +30,21 @@ def group_of(c):
 
 
 def dur(seconds):
-    """Seconds -> short Uzbek duration."""
-    if seconds is None or not np.isfinite(seconds): return "ma'lumot yo'q"
+    """Seconds -> short duration."""
+    if seconds is None or not np.isfinite(seconds): return 'no data'
     m = seconds / 60
-    if m < 1: return 'bir daqiqadan kam'
-    if m < 120: return f'{m:.0f} daqiqa'
-    if m < 2880: return f'{m / 60:.1f} soat'
-    return f'{m / 1440:.1f} kun'
+    if m < 1: return 'under a minute'
+    if m < 120: return f'{m:.0f} min'
+    if m < 2880: return f'{m / 60:.1f} hours'
+    return f'{m / 1440:.1f} days'
 
 
-def som(usd):
-    return f"{usd * UZS_PER_USD:,.0f} so'm".replace(',', ' ')
+def count(n, word):
+    return f"{n:.0f} {word}{'' if n == 1 else 's'}"
+
+
+def uzs(usd):
+    return f'{usd * UZS_PER_USD:,.0f} UZS'
 
 
 class Explainer:
@@ -60,33 +64,33 @@ class Explainer:
         g = lambda f: float(x.get(f, np.nan))
         med = lambda f: self.median.get(f, np.nan)
         if k == 'fan_in':
-            return (f"Qabul qiluvchi oxirgi 24 soatda {g('r_n_in_1d'):.0f} ta to'lov olgan; ulardan {g('r_cp_in_1d'):.0f} tasi "
-                    f"ilgari unga pul yubormagan yangi hisoblardan (7 kunda {g('r_cp_in_7d'):.0f} ta; odatiy hisobda {med('r_cp_in_7d'):.0f} ta).")
+            return (f"The receiver got {count(g('r_n_in_1d'), 'payment')} in the last 24 hours; {g('r_cp_in_1d'):.0f} of them came from "
+                    f"accounts that had never paid it before ({g('r_cp_in_7d'):.0f} in 7 days; a typical account has {med('r_cp_in_7d'):.0f}).")
         if k == 'fan_out':
-            return (f"Jo'natuvchi oxirgi 24 soatda {g('s_n_out_1d'):.0f} ta to'lov qilgan; {g('s_cp_out_1d'):.0f} tasi ilgari "
-                    f"pul yubormagan yangi hisoblarga (7 kunda {g('s_cp_out_7d'):.0f} ta; odatiy hisobda {med('s_cp_out_7d'):.0f} ta).")
+            return (f"The sender made {count(g('s_n_out_1d'), 'payment')} in the last 24 hours; {g('s_cp_out_1d'):.0f} of them went to "
+                    f"accounts it had never paid before ({g('s_cp_out_7d'):.0f} in 7 days; a typical account has {med('s_cp_out_7d'):.0f}).")
         if k == 'pass':
             if not np.isfinite(g('s_prev_in')):
-                return "Jo'natuvchiga bundan oldin pul kelmagan: bu to'lov hisobning birinchi chiqimlaridan."
-            return (f"Jo'natuvchiga oxirgi pul {dur(np.expm1(g('s_prev_in')))} oldin kelgan; 24 soatda "
-                    f"{som(g('s_usd_in_1d'))} kirib, {som(g('s_usd_out_1d'))} chiqib ketgan.")
+                return "No money had come into the sender's account before: this is one of its first outgoing payments."
+            return (f"Money last came into the sender's account {dur(np.expm1(g('s_prev_in')))} ago; in 24 hours "
+                    f"{uzs(g('s_usd_in_1d'))} came in and {uzs(g('s_usd_out_1d'))} went out.")
         if k == 'relation':
             n = g('pair_n_before')
-            return ("Bu ikki hisob o'rtasidagi birinchi to'lov (yangi qarshi tomon)." if n == 0
-                    else f"Bu ikki hisob o'rtasida avval {n:.0f} marta to'lov bo'lgan, oxirgisi {dur(np.expm1(g('pair_gap')))} oldin.")
+            return ('The first payment between these two accounts (a new counterparty).' if n == 0
+                    else f"These two accounts have paid each other {count(n, 'time')} before, most recently {dur(np.expm1(g('pair_gap')))} ago.")
         if k == 'history':
-            return (f"Jo'natuvchi hisobi {dur(np.expm1(g('s_age')))} davomida {g('s_n_before'):.0f} ta operatsiya qilgan; "
-                    f"qabul qiluvchi {dur(np.expm1(g('r_age')))} davomida {g('r_n_before'):.0f} ta.")
+            return (f"Sender's account: {count(g('s_n_before'), 'operation')} over {dur(np.expm1(g('s_age')))}; "
+                    f"receiver's: {g('r_n_before'):.0f} over {dur(np.expm1(g('r_age')))}.")
         if k == 'amount':
-            return f"Summa {row['amount_uzs']:,.0f} so'm (≈ {row['amount_usd']:,.0f} USD).".replace(',', ' ')
+            return f"Amount {row['amount_uzs']:,.0f} UZS (≈ {row['amount_usd']:,.0f} USD)."
         if k == 'rail':
-            return f"Kanal: {row['rail']}."
+            return f"Channel: {row['rail']}."
         if k == 'time':
-            return f"Vaqt: {row['ts']:%H:%M}, {WEEKDAYS.get(row['ts'].isoweekday(), '')}."
+            return f"Time: {row['ts']:%H:%M}, {WEEKDAYS.get(row['ts'].isoweekday(), '')}."
         if k == 'structure':
-            return "O'z hisobiga o'tkazma." if g('self_loop') else ("Bitta bank ichida." if g('same_bank') else "Turli banklar o'rtasida.")
-        return (f"Jo'natuvchi 7 kunda {som(g('s_usd_in_7d'))} qabul qilib, {som(g('s_usd_out_7d'))} yuborgan; "
-                f"qabul qiluvchi {som(g('r_usd_in_7d'))} qabul qilgan.")
+            return 'Transfer to own account.' if g('self_loop') else ('Within one bank.' if g('same_bank') else 'Between different banks.')
+        return (f"In 7 days the sender received {uzs(g('s_usd_in_7d'))} and sent {uzs(g('s_usd_out_7d'))}; "
+                f"the receiver received {uzs(g('r_usd_in_7d'))}.")
 
 
 def subgraph(t, scores, src, dst, ts, row_id, max_edges=36, window_days=7):
@@ -96,7 +100,7 @@ def subgraph(t, scores, src, dst, ts, row_id, max_edges=36, window_days=7):
     near = t.with_columns(risk=pl.Series(scores)).filter(
         (pl.col('src').is_in([src, dst]) | pl.col('dst').is_in([src, dst])) & pl.col('ts').is_between(lo, hi))
     near = near.sort(pl.col('row') == row_id, 'risk', descending=True).head(max_edges)
-    names = {src: 'Jo\'natuvchi', dst: 'Qabul qiluvchi'}
+    names = {src: 'Sender', dst: 'Receiver'}
     others = [a for a in dict.fromkeys(near['src'].to_list() + near['dst'].to_list()) if a not in (src, dst)]
     left = [a for a in others if near.filter((pl.col('src') == a) & (pl.col('dst') == src) | (pl.col('dst') == a) & (pl.col('src') == src)).height]
     right = [a for a in others if a not in left]

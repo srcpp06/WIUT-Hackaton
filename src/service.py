@@ -220,7 +220,7 @@ def scheme_rows(kind, target, now, accounts, rng, n=10):
         for b, a in zip(ob[:n], oa[:n]):
             t += step(); amt = round(float(rng.lognormal(np.log(1.8e6), 0.3)), -3); total += amt
             rows.append((t, b, a, tb, ta, amt, str(rng.choice(['Click', 'Payme', 'Humo', 'Uzcard']))))
-        t += step(); rows.append((t, tb, ta, tb, f'ATM-{rng.integers(10**8, 10**9)}', round(total * 0.95, -3), 'Naqd'))
+        t += step(); rows.append((t, tb, ta, tb, f'ATM-{rng.integers(10**8, 10**9)}', round(total * 0.95, -3), 'Cash'))
     elif kind == 'fan_out':
         amt = float(rng.lognormal(np.log(3e6), 0.2))
         for b, a in zip(ob[:n], oa[:n]):
@@ -230,6 +230,6 @@ def scheme_rows(kind, target, now, accounts, rng, n=10):
         amt = float(rng.lognormal(np.log(4e7), 0.2))
         for (b1, a1), (b2, a2) in zip(ring, ring[1:] + ring[:1]):
             t += timedelta(minutes=float(rng.uniform(20, 90))); amt *= 0.98
-            rows.append((t, b1, a1, b2, a2, round(amt, -3), "Bank o'tkazmasi"))
+            rows.append((t, b1, a1, b2, a2, round(amt, -3), 'Bank transfer'))
     return pl.DataFrame(rows, schema=['ts', 'src_bank', 'src_account', 'dst_bank', 'dst_account', 'amount_uzs', 'rail'],
                         orient='row').with_columns(pl.col('ts').cast(pl.Datetime('us')))

@@ -1,5 +1,5 @@
 <div class="decided">
   <b>{{ ACTIONS[d.action] }}</b> — {{ d.officer }}, {{ d.ts[:16].replace('T', ' ') }} UTC
   <p>{{ d.reason }}</p>
-  <p class="small muted">O'sha paytdagi baho: {{ '%.1f'|format(100 * d.prob) }}% · audit yozuvi #{{ d.seq }} · hash {{ d.hash[:12] }}…</p>
+  <p class="small muted">Score at the time: {{ '%.1f'|format(100 * d.prob) }}% · audit entry #{{ d.seq }} · hash {{ d.hash[:12] }}…</p>
 </div>

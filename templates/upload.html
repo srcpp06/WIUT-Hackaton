@@ -1,25 +1,25 @@
 {% extends "base.html" %}{% set active = 'upload' %}
 {% block title %}CSV{% endblock %}
 {% block body %}
-<h1>O'z ma'lumotingizni baholash (CSV)</h1>
-<p class="muted">Fayl alohida graf sifatida baholanadi: belgilar va ikkala model aynan navbatdagidek ishlaydi. Ustunlar: <code>ts, src_bank, src_account, dst_bank, dst_account, amount_uzs, rail</code>. Kanal: Humo, Uzcard, Click, Payme, Uzum, Bank o'tkazmasi, Naqd, SWIFT, Kripto. <a href="/sample.csv">Namuna CSV yuklab olish</a> (demo bankning oxirgi 2 kuni).</p>
+<h1>Score your own data (CSV)</h1>
+<p class="muted">The file is scored as a separate graph: features and both models work exactly as in the queue. Columns: <code>ts, src_bank, src_account, dst_bank, dst_account, amount_uzs, rail</code>. Rail: Humo, Uzcard, Click, Payme, Uzum, Bank transfer, Cash, SWIFT, Crypto. <a href="/sample.csv">Download a sample CSV</a> (the last 2 days of the demo bank).</p>
 <form action="/upload" method="post" enctype="multipart/form-data" class="form card">
   <input type="file" name="file" accept=".csv,text/csv" required>
-  <button type="submit">Baholash</button>
+  <button type="submit">Score</button>
 </form>
 {% if error %}<div class="banner err">{{ error }}</div>{% endif %}
 {% if result %}
 <section class="card ok">
-  <h2>{{ filename }}: {{ '{:,}'.format(result.n).replace(',', ' ') }} ta tranzaksiya {{ result.ms_total }} ms da baholandi ({{ result.ms_per_tx }} ms / tranzaksiya)</h2>
+  <h2>{{ filename }}: {{ '{:,}'.format(result.n) }} transactions scored in {{ result.ms_total }} ms ({{ result.ms_per_tx }} ms per transaction)</h2>
   <div class="scroll"><table class="grid">
-    <thead><tr><th>Qator</th><th>Vaqt</th><th>Jo'natuvchi → Qabul qiluvchi</th><th class="num">Summa</th><th>Kanal</th><th class="num">Xavf</th><th class="num">LightGBM</th><th class="num">GNN</th><th>Sabablar</th></tr></thead>
+    <thead><tr><th>Row</th><th>Time</th><th>Sender → Receiver</th><th class="num">Amount</th><th>Channel</th><th class="num">Risk</th><th class="num">LightGBM</th><th class="num">GNN</th><th>Reasons</th></tr></thead>
     <tbody>{% for x in result.top %}
-      <tr><td>{{ x.row + 2 }}</td><td>{{ x.ts|dt }}</td><td>{{ x.src_short }} → {{ x.dst_short }}</td><td class="num">{{ x.amount_uzs|som }}</td><td>{{ x.rail }}</td>
+      <tr><td>{{ x.row + 2 }}</td><td>{{ x.ts|dt }}</td><td>{{ x.src_short }} → {{ x.dst_short }}</td><td class="num">{{ x.amount_uzs|uzs }}</td><td>{{ x.rail }}</td>
       <td class="num"><b>{{ x.prob|pct }}</b></td><td class="num muted">{{ x.p_lgbm|pct }}</td><td class="num muted">{{ x.p_gnn|pct }}</td>
       <td class="small">{% for r in x.reasons or [] %}<div>{{ r.title }}: {{ r.evidence }}</div>{% endfor %}</td></tr>
     {% endfor %}</tbody>
   </table></div>
-  <p class="small muted">Eng xavfli 50 ta ko'rsatilgan (qator raqami fayldagi qator, sarlavha 1-qator).</p>
+  <p class="small muted">The 50 riskiest are shown (row is the line number in the file; the header is line 1).</p>
 </section>
 {% endif %}
 {% endblock %}

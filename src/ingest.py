@@ -18,7 +18,7 @@ AMLWORLD_COLUMNS = ['Timestamp', 'From Bank', 'Account', 'To Bank', 'Account.1',
 # the closest AMLworld format (declared in the README as a modelling assumption).
 FORMATS = ['ACH', 'Bitcoin', 'Cash', 'Cheque', 'Credit Card', 'Reinvestment', 'Wire']
 UZ_RAILS = {'Humo': 'Credit Card', 'Uzcard': 'Credit Card', 'Click': 'ACH', 'Payme': 'ACH', 'Uzum': 'ACH',
-            "Bank o'tkazmasi": 'ACH', 'Naqd': 'Cash', 'SWIFT': 'Wire', 'Kripto': 'Bitcoin'}
+            'Bank transfer': 'ACH', 'Cash': 'Cash', 'SWIFT': 'Wire', 'Crypto': 'Bitcoin'}
 UZS_PER_USD = 12_800.0   # fixed demo rate (assumption): converts UZS amounts to the USD scale
 
 

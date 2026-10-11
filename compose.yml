@@ -1,7 +1,7 @@
 services:
   app:
     build: .
-    container_name: qalqon
+    container_name: flowlens
     restart: unless-stopped
     volumes:
       - ./models:/app/models:ro

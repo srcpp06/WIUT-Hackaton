@@ -5,7 +5,7 @@
 set -euo pipefail
 HOST=ubuntu@132.226.186.157
 KEY=${KEY:-$HOME/.ssh/oracle_server}
-URL=https://qalqon.132-226-186-157.sslip.io
+URL=https://flowlens.132-226-186-157.sslip.io
 REPO=srcpp06/WIUT-Hackaton
 SSH="ssh -i $KEY -o BatchMode=yes"
 
@@ -14,7 +14,7 @@ git fetch -q origin
 [ "$(git rev-parse origin/main)" = "$sha" ] || { echo "HEAD is not origin/main: push first" >&2; exit 1; }
 
 if [ "${1:-}" = "--data" ]; then
-  rsync -az --delete --chmod=F644,D755 -e "$SSH" models/ "$HOST:qalqon/models/"
+  rsync -az --delete --chmod=F644,D755 -e "$SSH" models/ "$HOST:flowlens/models/"
 fi
 
 dep=$(gh api "repos/$REPO/deployments" --jq .id --input - <<JSON
@@ -22,7 +22,7 @@ dep=$(gh api "repos/$REPO/deployments" --jq .id --input - <<JSON
  "description": "Oracle Cloud ARM VM, Docker behind Caddy"}
 JSON
 )
-$SSH "$HOST" "cd ~/qalqon && git fetch -q && git reset -q --hard $sha && docker compose up -d --build"
+$SSH "$HOST" "cd ~/flowlens && git fetch -q && git reset -q --hard $sha && docker compose up -d --build"
 
 state=failure
 for _ in $(seq 1 60); do

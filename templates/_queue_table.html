@@ -1,25 +1,25 @@
 <div class="scroll">
 <table class="grid">
-  <thead><tr><th>#</th><th>Vaqt</th><th>Jo'natuvchi → Qabul qiluvchi</th><th class="num">Summa</th><th>Kanal</th><th class="num">Xavf</th><th class="num">LightGBM</th><th class="num">GNN</th><th>Daraja</th><th>Qaror</th></tr></thead>
+  <thead><tr><th>#</th><th>Time</th><th>Sender → Receiver</th><th class="num">Amount</th><th>Channel</th><th class="num">Risk</th><th class="num">LightGBM</th><th class="num">GNN</th><th>Level</th><th>Decision</th></tr></thead>
   <tbody>
   {% for x in q['items'] %}
   <tr class="lvl-{{ x.level }}" onclick="location='/alert/{{ x.row }}'">
     <td class="muted">{{ offset + loop.index }}</td>
-    <td>{{ x.ts|dt }}{% if x.injected %} <span class="tag">jonli</span>{% endif %}</td>
+    <td>{{ x.ts|dt }}{% if x.injected %} <span class="tag">live</span>{% endif %}</td>
     <td><a href="/alert/{{ x.row }}">{{ x.src_short }} → {{ x.dst_short }}</a></td>
-    <td class="num">{{ x.amount_uzs|som }}</td>
+    <td class="num">{{ x.amount_uzs|uzs }}</td>
     <td>{{ x.rail }}</td>
     <td class="num"><b>{{ x.prob|pct }}</b></td>
     <td class="num muted">{{ x.p_lgbm|pct }}</td>
     <td class="num muted">{{ x.p_gnn|pct }}</td>
     <td><span class="pill {{ x.level }}">{{ x.level|level }}</span></td>
-    <td>{% if x.decision %}<span class="tag">{{ {'confirm': 'tasdiqlangan', 'escalate': 'eskalatsiya', 'dismiss': 'rad etilgan'}[x.decision] }}</span>{% endif %}</td>
+    <td>{% if x.decision %}<span class="tag">{{ {'confirm': 'confirmed', 'escalate': 'escalated', 'dismiss': 'dismissed'}[x.decision] }}</span>{% endif %}</td>
   </tr>
   {% endfor %}
   </tbody>
 </table>
 </div>
 <div class="pager">
-  {% if offset > 0 %}<a href="/?{{ 'level=' ~ level ~ '&' if level }}offset={{ [offset - 50, 0]|max }}" hx-get="/?{{ 'level=' ~ level ~ '&' if level }}offset={{ [offset - 50, 0]|max }}" hx-target="#queue" hx-push-url="true">← oldingi 50</a>{% endif %}
-  {% if offset + 50 < q.total %}<a href="/?{{ 'level=' ~ level ~ '&' if level }}offset={{ offset + 50 }}" hx-get="/?{{ 'level=' ~ level ~ '&' if level }}offset={{ offset + 50 }}" hx-target="#queue" hx-push-url="true">keyingi 50 →</a>{% endif %}
+  {% if offset > 0 %}<a href="/?{{ 'level=' ~ level ~ '&' if level }}offset={{ [offset - 50, 0]|max }}" hx-get="/?{{ 'level=' ~ level ~ '&' if level }}offset={{ [offset - 50, 0]|max }}" hx-target="#queue" hx-push-url="true">← previous 50</a>{% endif %}
+  {% if offset + 50 < q.total %}<a href="/?{{ 'level=' ~ level ~ '&' if level }}offset={{ offset + 50 }}" hx-get="/?{{ 'level=' ~ level ~ '&' if level }}offset={{ offset + 50 }}" hx-target="#queue" hx-push-url="true">next 50 →</a>{% endif %}
 </div>

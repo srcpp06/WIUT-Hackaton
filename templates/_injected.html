@@ -1,12 +1,12 @@
 <section class="card ok">
-  <h2>Qo'shildi va baholandi: {{ res.rows|length }} ta tranzaksiya, {{ res.ms_total }} ms ({{ res.ms_per_tx }} ms / tranzaksiya)</h2>
+  <h2>Added and scored: {{ res.rows|length }} transaction{{ 's' if res.rows|length != 1 }} in {{ res.ms_total }} ms ({{ res.ms_per_tx }} ms per transaction)</h2>
   <div class="scroll"><table class="grid">
-    <thead><tr><th>#</th><th>Vaqt</th><th>Jo'natuvchi → Qabul qiluvchi</th><th class="num">Summa</th><th>Kanal</th><th class="num">Xavf</th><th>Daraja</th><th>Asosiy sabab</th></tr></thead>
+    <thead><tr><th>#</th><th>Time</th><th>Sender → Receiver</th><th class="num">Amount</th><th>Channel</th><th class="num">Risk</th><th>Level</th><th>Main reason</th></tr></thead>
     <tbody>{% for a in items %}
       <tr class="lvl-{{ a.level }}"><td><a href="/alert/{{ a.row }}">{{ a.row }}</a></td><td>{{ a.ts|dt }}</td><td>{{ a.src_short }} → {{ a.dst_short }}</td>
-      <td class="num">{{ a.amount_uzs|som }}</td><td>{{ a.rail }}</td><td class="num"><b>{{ a.prob|pct }}</b></td>
-      <td><span class="pill {{ a.level }}">{{ a.level|level }}</span> {{ a.rank }}-o'rin</td><td>{{ a.reasons[0].title if a.reasons }}</td></tr>
+      <td class="num">{{ a.amount_uzs|uzs }}</td><td>{{ a.rail }}</td><td class="num"><b>{{ a.prob|pct }}</b></td>
+      <td><span class="pill {{ a.level }}">{{ a.level|level }}</span> rank {{ '{:,}'.format(a.rank) }}</td><td>{{ a.reasons[0].title if a.reasons }}</td></tr>
     {% endfor %}</tbody>
   </table></div>
-  <p class="small muted"><a href="/">Navbatni ochish →</a></p>
+  <p class="small muted"><a href="/">Open the queue →</a></p>
 </section>
