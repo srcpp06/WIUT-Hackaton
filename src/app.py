@@ -19,7 +19,7 @@ from .ingest import UZ_COLUMNS, UZ_RAILS
 from .service import Service, scheme_rows
 
 ROOT = Path(__file__).resolve().parent.parent
-VERSION = "0.2.0"
+VERSION = "0.3.0"
 LEVELS = {'high': 'Yuqori', 'medium': "O'rta", 'low': 'Past'}
 ACTIONS = {'confirm': 'Shubhali deb tasdiqlash', 'escalate': "Eskalatsiya (moliyaviy monitoring bo'limiga)",
            'dismiss': 'Asossiz signal (rad etish)'}
