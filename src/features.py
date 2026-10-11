@@ -20,16 +20,27 @@ WINDOWS = {'1d': '1d', '7d': '7d'}
 SIDE_STATS = ['n_in', 'n_out', 'usd_in', 'usd_out', 'cp_in', 'cp_out']
 
 
-def account_events(t):
+def compact(t):
+    """Transactions with integer account ids (s, d) and 32-bit numbers: the 5M-row training set fits in memory."""
+    ids = pl.concat([t['src'], t['dst']]).unique().to_frame('acct').with_row_index('aid')
+    c = t.select(pl.col('tx_id').cast(pl.UInt32), 'ts', pl.col('amount_usd').cast(pl.Float32), 'src', 'dst')
+    c = c.join(ids.rename({'acct': 'src', 'aid': 's'}), on='src').join(ids.rename({'acct': 'dst', 'aid': 'd'}), on='dst')
+    return c.drop('src', 'dst')
+
+
+def account_events(c):
     """Each transaction seen from both ends: an 'out' event for the sender and an 'in' event for the receiver."""
     cols = ['tx_id', 'ts', 'amount_usd']
-    out = t.select(*cols, acct=pl.col('src'), cp=pl.col('dst'), is_in=pl.lit(0, pl.Int8))
-    inn = t.select(*cols, acct=pl.col('dst'), cp=pl.col('src'), is_in=pl.lit(1, pl.Int8))
-    return pl.concat([out, inn]).sort('acct', 'ts', 'tx_id')
+    out = c.select(*cols, acct=pl.col('s'), cp=pl.col('d'), is_in=pl.lit(0, pl.Int8))
+    inn = c.select(*cols, acct=pl.col('d'), cp=pl.col('s'), is_in=pl.lit(1, pl.Int8))
+    return pl.concat([out, inn]).sort('acct', 'ts', 'tx_id', 'is_in')   # self-transfer: out before in, deterministic
 
 
-def history(ev):
-    """Rolling per-account statistics over the events strictly before each event."""
+def history(ev, chunks=1):
+    """Rolling per-account statistics over the events strictly before each event. Accounts are
+    processed in `chunks` groups to bound memory (an account's events always stay in one group)."""
+    if chunks > 1:
+        return pl.concat([history(ev.filter(pl.col('acct') % chunks == k)) for k in range(chunks)])
     parts = []
     for name, period in WINDOWS.items():
         i, o = pl.col('is_in') == 1, pl.col('is_in') == 0
@@ -58,16 +69,21 @@ def history(ev):
 
 def build(t):
     """Feature matrix (pandas, one row per transaction in t, same order)."""
-    h = history(account_events(t))
-    side = [c for c in h.columns if c not in ('tx_id', 'is_in', 'acct', 'ts')]
-    snd = h.filter(pl.col('is_in') == 0).select('tx_id', *[pl.col(c).alias(f's_{c}') for c in side])
-    rcv = h.filter(pl.col('is_in') == 1).select('tx_id', *[pl.col(c).alias(f'r_{c}') for c in side])
-    pair = t.sort('ts', 'tx_id').with_columns(
-        pair_n_before=pl.int_range(pl.len()).over('src', 'dst'),
-        pair_gap=(pl.col('ts').dt.epoch('s') - pl.col('ts').dt.epoch('s').shift(1).over('src', 'dst'))).select('tx_id', 'pair_n_before', 'pair_gap')
+    c = compact(t)
+    h = history(account_events(c), chunks=max(1, t.height // 1_000_000))
+    side = [x for x in h.columns if x not in ('tx_id', 'is_in', 'acct', 'ts')]
+    h = h.with_columns(pl.col(x).cast(pl.Float32) for x in side)
+    snd = h.filter(pl.col('is_in') == 0).select('tx_id', *[pl.col(x).alias(f's_{x}') for x in side])
+    rcv = h.filter(pl.col('is_in') == 1).select('tx_id', *[pl.col(x).alias(f'r_{x}') for x in side])
+    del h
+    sec = pl.col('ts').dt.epoch('s')
+    pair = c.sort('ts', 'tx_id').with_columns(
+        pair_n_before=pl.int_range(pl.len()).over('s', 'd').cast(pl.Float32),
+        pair_gap=(sec - sec.shift(1).over('s', 'd')).cast(pl.Float32)).select('tx_id', 'pair_n_before', 'pair_gap')
+    del c
     usd = pl.col('amount_usd')
     X = t.select(
-        'tx_id', 'amount_usd',
+        pl.col('tx_id').cast(pl.UInt32), 'amount_usd',
         log_usd=usd.log1p(),
         hour=pl.col('ts').dt.hour(), weekday=pl.col('ts').dt.weekday(),
         same_bank=(pl.col('src_bank') == pl.col('dst_bank')).cast(pl.Int8),

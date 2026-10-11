@@ -23,3 +23,7 @@ var/
 
 # Demo data is generated (python -m src.generator), not committed
 data/demo/
+
+# Training logs and alternative artifact folders
+logs/
+models_*/
