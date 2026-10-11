@@ -27,3 +27,6 @@ data/demo/
 # Training logs and alternative artifact folders
 logs/
 models_*/
+deck/
+FlowLens_pitch_script.*
+.~*
