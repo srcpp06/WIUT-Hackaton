@@ -9,6 +9,7 @@ from pathlib import Path
 
 import joblib
 import numpy as np
+import pandas as pd
 import polars as pl
 import torch
 
@@ -35,8 +36,8 @@ class Models:
         self.stack = joblib.load(d / 'ensemble.joblib')
         self.metrics = json.loads((d / 'metrics.json').read_text())
 
-    def gnn_raw(self, t):
-        return gnn.predict(self.gnn, gnn.Graph(t, self.scaler), gnn.edge_attrs(t))
+    def gnn_raw(self, t, e=None):
+        return gnn.predict(self.gnn, gnn.Graph(t, self.scaler), gnn.edge_attrs(t) if e is None else e)
 
     def scores(self, raw_l, raw_g):
         """Calibrated probabilities of each model and of the stacked ensemble."""
@@ -62,21 +63,25 @@ class Service:
         """Back to the generated demo data (drops injected transactions)."""
         with self.lock:
             self.raw = self.base.clone()
+            self.pos = {}
             self.t = from_uz(self.raw)
             self.X = build(self.t)
             self.raw_l = self.m.lgbm.raw(self.X)
+            self.E = gnn.edge_attrs(self.t)   # per-transaction GNN inputs, extended as transactions arrive
             self.explainer = Explainer(self.m.lgbm.columns, self.X)
             self._rescore_graph()
             self.injected = []
 
     def _rescore_graph(self):
-        self.p_l, self.p_g, self.p = self.m.scores(self.raw_l, self.m.gnn_raw(self.t))
+        self.p_l, self.p_g, self.p = self.m.scores(self.raw_l, self.m.gnn_raw(self.t, self.E))
         order = np.argsort(-self.p, kind='stable')
         self.rank = np.empty(len(order), dtype=np.int64); self.rank[order] = np.arange(len(order))
         n = len(order)
         self.level = np.where(self.rank < HIGH * n, 'high', np.where(self.rank < MEDIUM * n, 'medium', 'low'))
         self.order = order
-        self.pos = {r: i for i, r in enumerate(self.t['row'].to_list())}
+        if len(getattr(self, 'pos', {})) != self.t.height:   # rows only ever get appended
+            for i, r in enumerate(self.t['row'][len(getattr(self, 'pos', {})):].to_list(), start=len(getattr(self, 'pos', {}))):
+                self.pos[r] = i
 
     def now(self):
         return self.raw['ts'].max()
@@ -100,7 +105,8 @@ class Service:
             Xn = Xs[sub['row'].is_in(new).to_numpy()].reset_index(drop=True)
             assert t['row'].to_list()[-len(new):] == new, 'injected transactions must be the latest ones'
             self.t = t
-            self.X = pl.concat([pl.from_pandas(self.X), pl.from_pandas(Xn)]).to_pandas()
+            self.X = pd.concat([self.X, Xn], ignore_index=True)
+            self.E = np.concatenate([self.E, gnn.edge_attrs(fresh)])
             self.raw_l = np.concatenate([self.raw_l, self.m.lgbm.raw(Xn)])
             self._rescore_graph()
             self.injected += new

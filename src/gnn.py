@@ -52,14 +52,16 @@ class Graph:
     def __init__(self, t, scaler=None):
         nodes = node_table(t)
         self.ids = nodes['acct']
-        index = {a: i for i, a in enumerate(self.ids.to_list())}
         feats = nodes.drop('acct').to_numpy().astype(np.float32)
         self.scaler = scaler or (feats.mean(0), feats.std(0) + 1e-6)
         self.x = torch.from_numpy((feats - self.scaler[0]) / self.scaler[1])
-        src = t['src'].replace_strict(index, return_dtype=pl.Int64).to_numpy()
-        dst = t['dst'].replace_strict(index, return_dtype=pl.Int64).to_numpy()
-        pairs = np.unique(np.stack([src, dst], 1), axis=0)   # repeated payments between two accounts: one edge
-        self.edge_index = torch.from_numpy(pairs.T.copy())
+        index = pl.DataFrame({'acct': self.ids, 'i': pl.int_range(len(self.ids), dtype=pl.Int64, eager=True)})
+        ends = t.select('src', 'dst').with_row_index('k')
+        src = ends.join(index, left_on='src', right_on='acct').sort('k')['i'].to_numpy()
+        dst = ends.join(index, left_on='dst', right_on='acct').sort('k')['i'].to_numpy()
+        n = len(self.ids)
+        key = np.unique(src * n + dst)   # repeated payments between two accounts: one edge
+        self.edge_index = torch.from_numpy(np.stack([key // n, key % n]))
         self.src, self.dst = torch.from_numpy(src.copy()), torch.from_numpy(dst.copy())
 
 
