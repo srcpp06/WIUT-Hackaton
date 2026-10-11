@@ -76,7 +76,7 @@ evaluated on the test period once. The one-stage LightGBM had test PR-AUC 0.658 
 
 Stacking weights (fitted on validation): LightGBM 0.75, GNN 0.01. The GNN alone is much weaker than LightGBM here and adds about +0.01 PR-AUC to the ensemble.
 
-**Live, on the demo server (2 ARM cores):** a new transaction is scored in 274 ms (median, p95 378 ms, 26 live requests) including the graph refresh; CPU cost about $2.10 per million transactions (Oracle A1 list price). Training on 5.1M transactions takes about 38 minutes on a laptop CPU (LightGBM in two stages with three out-of-fold refits, 22 min; GNN, 16 min).
+**Live, on the demo server (2 ARM cores):** a new transaction is scored in 274 ms (median, p95 286 ms, 24 live requests) including the graph refresh; CPU cost about $2.26 per million transactions (Oracle A1 list price). Training on 5.1M transactions takes about 38 minutes on a laptop CPU (LightGBM in two stages with three out-of-fold refits, 22 min; GNN, 16 min).
 
 **Transfer check on the Uzbek demo bank** (synthetic, our own generator, so not a headline metric): LightGBM PR-AUC 0.195 (recall in top 2%: 53%), GNN PR-AUC 0.005 (recall in top 2%: 4%), ensemble PR-AUC 0.199 (recall in top 2%: 55%). Fan-out schemes injected live are usually flagged, often above 50%, but not for every account profile; the mule fan-in pattern of our generator is scored low. This is why a pilot retrains on the bank's own data.
 
