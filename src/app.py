@@ -20,7 +20,7 @@ from .service import Service, scheme_rows
 
 ROOT = Path(__file__).resolve().parent.parent
 BRAND = "FlowLens"
-VERSION = "0.4.0"
+VERSION = "0.5.0"
 LEVELS = {'high': 'High', 'medium': 'Medium', 'low': 'Low'}
 ACTIONS = {'confirm': 'Confirm as suspicious', 'escalate': 'Escalate to the financial monitoring unit',
            'dismiss': 'Dismiss (false alarm)'}

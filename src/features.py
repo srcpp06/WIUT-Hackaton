@@ -7,11 +7,14 @@ Every transaction is described by
     counterparties (accounts never paid / paid by before: fan-in and fan-out of mule schemes);
   * pass-through timing: how soon money leaves an account after money arrived;
   * the relationship: has this sender paid this receiver before?
+  * (second stage) each account's earlier risk: first-stage scores of the payments it recently sent
+    and received, so money moving on from a risky payment is visible (layering).
 
 Windows end just before the transaction's own second, so it never sees itself or anything later. The same
 code featurises the 5M-row training data and a single transaction injected live in the demo.
 """
 import numpy as np
+import pandas as pd
 import polars as pl
 
 from .ingest import FORMATS
@@ -68,6 +71,42 @@ def history(ev):
         prev_in=s - pl.when(pl.col('is_in') == 1).then(s).shift(1).forward_fill().over('acct'),
         age=s - s.min().over('acct'),
         n_before=pl.Series(np.arange(len(acct)) - first_of_acct))
+
+
+RISK_THRESHOLD = 0.1
+
+
+def risk_history(t, s):
+    """Each account's earlier risk: first-stage scores s (aligned with t's rows) of the payments the sender
+    and the receiver sent and received before this transaction, summed and counted above RISK_THRESHOLD,
+    over 24 hours and 7 days. Money that just arrived from a risky payment makes the onward payment
+    suspicious too (layering), which the transaction's own features cannot see."""
+    ev = account_events(compact(t))
+    acct = ev['acct'].to_numpy().astype(np.int64)
+    sec = ev['ts'].dt.epoch('s').to_numpy().astype(np.int64)
+    key = acct * 10**10 + (sec - sec.min())
+    first_of_acct = np.searchsorted(key, acct * 10**10, 'left')
+    stop = np.searchsorted(key, key, 'left')
+    pos = np.full(int(t['tx_id'].max()) + 1, -1, dtype=np.int64)
+    pos[t['tx_id'].to_numpy().astype(np.int64)] = np.arange(t.height)
+    score = np.asarray(s, dtype=np.float64)[pos[ev['tx_id'].to_numpy().astype(np.int64)]]
+    is_in = ev['is_in'].to_numpy().astype(bool); high = score > RISK_THRESHOLD
+    cum = lambda v: np.concatenate([[0.0], np.cumsum(v, dtype=np.float64)])
+    sums = {'risk_in': cum(score * is_in), 'risk_out': cum(score * ~is_in), 'hi_in': cum(high & is_in), 'hi_out': cum(high & ~is_in)}
+    cols = {}
+    for name, period in WINDOW_SECONDS.items():
+        begin = np.maximum(np.searchsorted(key, key - period, 'left'), first_of_acct)
+        for stat, c in sums.items():
+            cols[f'{stat}_{name}'] = (c[stop] - c[begin]).astype(np.float32)
+    h = pl.DataFrame({'tx_id': ev['tx_id'], 'is_in': ev['is_in'], **cols})
+    snd = h.filter(pl.col('is_in') == 0).select('tx_id', *[pl.col(k).alias(f's_{k}') for k in cols])
+    rcv = h.filter(pl.col('is_in') == 1).select('tx_id', *[pl.col(k).alias(f'r_{k}') for k in cols])
+    return snd.join(rcv, on='tx_id').sort('tx_id').drop('tx_id').to_pandas()
+
+
+def with_risk(t, X, s):
+    """Stage-two feature matrix: build(t) plus risk_history(t, s)."""
+    return pd.concat([X, risk_history(t, s)], axis=1)
 
 
 def build(t):

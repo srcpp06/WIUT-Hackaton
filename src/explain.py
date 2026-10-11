@@ -5,6 +5,7 @@ from datetime import timedelta
 import numpy as np
 import polars as pl
 
+from .features import RISK_THRESHOLD
 from .ingest import UZS_PER_USD
 
 # (key, title, rule on the feature name); the first matching rule wins
@@ -19,6 +20,7 @@ GROUPS = [
     ('rail', 'Payment channel', lambda c: c == 'fmt'),
     ('time', 'Time of payment', lambda c: c in ('hour', 'weekday')),
     ('structure', 'Same-bank or own-account transfer', lambda c: c in ('same_bank', 'self_loop')),
+    ('risk', "Risk of the accounts' earlier payments", lambda c: c.startswith(('s_risk', 'r_risk', 's_hi_', 'r_hi_'))),
     ('volume', 'Recent turnover of the accounts', lambda c: True),
 ]
 TITLES = {k: t for k, t, _ in GROUPS}
@@ -87,6 +89,12 @@ class Explainer:
             return f"Channel: {row['rail']}."
         if k == 'time':
             return f"Time: {row['ts']:%H:%M}, {WEEKDAYS.get(row['ts'].isoweekday(), '')}."
+        if k == 'risk':
+            si, so, ri, ro = (g(f) for f in ('s_hi_in_7d', 's_hi_out_7d', 'r_hi_in_7d', 'r_hi_out_7d'))
+            if si + so + ri + ro == 0:
+                return 'Neither account sent or received a high-risk payment in the last 7 days.'
+            return (f"High-risk payments in the last 7 days: the sender received {si:.0f} and sent {so:.0f}; the receiver "
+                    f"received {ri:.0f} and sent {ro:.0f} (high-risk: first-stage score above {RISK_THRESHOLD:.0%}).")
         if k == 'structure':
             return 'Transfer to own account.' if g('self_loop') else ('Within one bank.' if g('same_bank') else 'Between different banks.')
         return (f"In 7 days the sender received {uzs(g('s_usd_in_7d'))} and sent {uzs(g('s_usd_out_7d'))}; "

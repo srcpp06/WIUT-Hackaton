@@ -16,7 +16,7 @@ import torch
 from . import gnn
 from .audit import AuditLog
 from .explain import Explainer, subgraph
-from .features import build
+from .features import build, risk_history
 from .ingest import UZS_PER_USD, from_uz, read_uz
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -65,7 +65,9 @@ class Service:
             self.raw = self.base.clone()
             self.pos = {}
             self.t = from_uz(self.raw)
-            self.X = build(self.t)
+            X = build(self.t)
+            self.s1 = self.m.lgbm.stage1.predict(X)   # first-stage scores: the accounts' earlier risk for stage 2
+            self.X = self.m.lgbm.features(self.t, X)
             self.raw_l = self.m.lgbm.raw(self.X)
             self.E = gnn.edge_attrs(self.t)   # per-transaction GNN inputs, extended as transactions arrive
             self.explainer = Explainer(self.m.lgbm.columns, self.X)
@@ -102,10 +104,19 @@ class Service:
             accts = set(fresh['src'].to_list()) | set(fresh['dst'].to_list())
             sub = t.filter(pl.col('src').is_in(list(accts)) | pl.col('dst').is_in(list(accts)))
             Xs = build(sub)
-            Xn = Xs[sub['row'].is_in(new).to_numpy()].reset_index(drop=True)
+            sub_rows = sub['row'].to_numpy(); is_new = np.isin(sub_rows, new)
+            Xn = Xs[is_new].reset_index(drop=True)
+            # stage 2 needs the first-stage scores of every earlier payment of these accounts: kept from the
+            # full graph for existing rows, computed here for the new ones
+            s1_new = self.m.lgbm.stage1.predict(Xn)
+            s1_sub = np.empty(len(sub_rows))
+            s1_sub[is_new] = s1_new
+            s1_sub[~is_new] = self.s1[[self.pos[r] for r in sub_rows[~is_new]]]
+            Xn = pd.concat([Xn, risk_history(sub, s1_sub)[is_new].reset_index(drop=True)], axis=1)
             assert t['row'].to_list()[-len(new):] == new, 'injected transactions must be the latest ones'
             self.t = t
             self.X = pd.concat([self.X, Xn], ignore_index=True)
+            self.s1 = np.concatenate([self.s1, s1_new])
             self.E = np.concatenate([self.E, gnn.edge_attrs(fresh)])
             self.raw_l = np.concatenate([self.raw_l, self.m.lgbm.raw(Xn)])
             self._rescore_graph()
@@ -118,7 +129,7 @@ class Service:
         """Score a separate dataset (a jury CSV) on its own graph; nothing is merged into the demo bank."""
         w0, c0 = time.perf_counter(), time.process_time()
         t = from_uz(df.with_row_index('row').with_columns(pl.col('row').cast(pl.Int64)))
-        X = build(t)
+        X = self.m.lgbm.features(t, build(t))
         p_l, p_g, p = self.m.scores(self.m.lgbm.raw(X), self.m.gnn_raw(t))
         wall, cpu = (time.perf_counter() - w0) * 1000, (time.process_time() - c0) * 1000
         self.latency.append((wall / t.height, cpu / t.height))

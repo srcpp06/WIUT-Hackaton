@@ -32,7 +32,7 @@ def uz_check(lgbm, model, scaler, cal_g, stack, log):
     from src.ingest import from_uz
     tx, truth, _ = generate(n_accounts=2000, seed=7)
     t = from_uz(tx.join(truth.select('row', 'label'), on='row'))
-    y = t['label'].to_numpy(); X = build(t)
+    y = t['label'].to_numpy(); X = lgbm.features(t, build(t))
     raw_l, raw_g = lgbm.raw(X), gnn.predict(model, gnn.Graph(t, scaler), gnn.edge_attrs(t))
     p = {'LightGBM': lgbm.calibrator.predict(raw_l), 'GNN': cal_g.predict(raw_g),
          'Ensemble': stack.predict_proba(np.column_stack([raw_l, raw_g]))[:, 1]}
@@ -63,9 +63,9 @@ def main(a):
     t1 = time.time(); X = build(t); timing['features_s'] = time.time() - t1
     log(f'features {X.shape}')
 
-    # 1) LightGBM on backward-looking transaction features
+    # 1) LightGBM on backward-looking transaction features, in two stages (stage 2 adds the accounts' earlier risk)
     t1 = time.time()
-    lgbm = baseline.fit(X.iloc[tr], y[tr], X.iloc[va], y[va], log=log)
+    lgbm, X = baseline.fit_two_stage(t, X, y, tr, va, log=log)
     raw_va, raw_te = lgbm.raw(X.iloc[va]), lgbm.raw(X.iloc[te])
     p_va = {'lgbm': lgbm.calibrator.predict(raw_va)}; p_te = {'lgbm': lgbm.calibrator.predict(raw_te)}
     timing['lgbm_train_s'] = time.time() - t1

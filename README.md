@@ -29,7 +29,9 @@ transactions ─▶ ingest: one schema for AMLworld and the Uzbek data (amounts 
                   · sender and receiver history before this payment: payments in/out and money in/out
                     over 24 h and 7 days, number of new counterparties (fan-in / fan-out)
                   · pass-through: how soon money leaves after it arrived; first payment between the pair
-             ─▶ LightGBM (src/baseline.py)           ─┐
+             ─▶ LightGBM in two stages (src/baseline.py): stage 2 adds each account's earlier risk,
+                the stage-1 scores of the payments it recently sent and received (layering)
+             ─▶ LightGBM stage 2                      ─┐
              ─▶ GraphSAGE over the account graph      ├─▶ stacking (logistic regression fitted on
                 (src/gnn.py): accounts are nodes,     │   the validation period) ─▶ probability
                 payments are edges, messages flow    ─┘
@@ -44,6 +46,9 @@ transactions ─▶ ingest: one schema for AMLworld and the Uzbek data (amounts 
 - **GNN protocol.** The graph that scores a period contains the transactions up to the end of that
   period with labels hidden, as in the AMLworld benchmark (Egressy et al., 2024). The LightGBM
   features are stricter: they only use the past of each transaction.
+- **Two stages without leakage.** Stage 2's risk features need a stage-1 score for every earlier
+  payment. Training payments get out-of-fold scores (stage 1 refitted without each of three time
+  blocks), so stage 2 learns from scores like the ones it sees on new data.
 - **Calibration.** Isotonic regression on the validation period turns scores into probabilities.
 
 ## Results
@@ -55,18 +60,22 @@ them live from `models/metrics.json`.
 
 | Model | PR-AUC | ROC-AUC | F1 | Precision / recall at F1 threshold | Precision / recall in the top 1% |
 |---|---|---|---|---|---|
-| LightGBM | 0.658 | 0.978 | 0.700 | 85.1% / 59.5% | 13.9% / 78.3% |
+| LightGBM, two stages | 0.725 | 0.989 | 0.764 | 88.3% / 67.3% | 14.6% / 82.7% |
 | GraphSAGE alone | 0.218 | 0.951 | 0.215 | 69.6% / 12.7% | 8.3% / 46.8% |
-| Stacking ensemble | 0.679 | 0.988 | 0.692 | 89.8% / 56.3% | 14.0% / 79.4% |
+| Stacking ensemble | **0.734** | **0.990** | **0.762** | **90.8%** / 65.6% | 14.7% / 83.1% |
 
-In the riskiest 0.1% of test transactions (1,016 alerts) the ensemble is right 944 times: **precision 92.9%**, recall 52.5%.
-Reviewing the riskiest 1% finds 79.4% of all laundering.
+In the riskiest 0.1% of test transactions (1,016 alerts) the ensemble is right 969 times: **precision 95.4%**, recall 53.9%.
+Reviewing the riskiest 1% finds 83.1% of all laundering.
 
-Stacking weights (fitted on validation): LightGBM 0.84, GNN 0.04. The GNN alone is much weaker than LightGBM here, but it still adds about +0.02 PR-AUC to the ensemble.
+The second stage was chosen on the validation period (PR-AUC 0.620 → 0.649; other changes we tried,
+more negatives and larger trees, moved it by less than 0.002, inside run-to-run noise) and then
+evaluated on the test period once. The one-stage LightGBM had test PR-AUC 0.658 and the ensemble 0.679.
 
-**Live, on the demo server (2 ARM cores):** a new transaction is scored in 264 ms (median, p95 297 ms, 24 live requests) including the graph refresh; CPU cost about $2.22 per million transactions (Oracle A1 list price). Training both models on 5.1M transactions takes about 18 minutes on a laptop CPU.
+Stacking weights (fitted on validation): LightGBM 0.75, GNN 0.01. The GNN alone is much weaker than LightGBM here and adds about +0.01 PR-AUC to the ensemble.
 
-**Transfer check on the Uzbek demo bank** (synthetic, our own generator, so not a headline metric): LightGBM PR-AUC 0.147 (recall in top 2%: 59%), GNN PR-AUC 0.005 (recall in top 2%: 4%), ensemble PR-AUC 0.154 (recall in top 2%: 60%). Fan-out schemes injected live are flagged; the mule fan-in pattern of our generator is scored low. This is why a pilot retrains on the bank's own data.
+**Live, on the demo server (2 ARM cores):** a new transaction is scored in 264 ms (median, p95 297 ms, 24 live requests) including the graph refresh; CPU cost about $2.22 per million transactions (Oracle A1 list price). Training on 5.1M transactions takes about 38 minutes on a laptop CPU (LightGBM in two stages with three out-of-fold refits, 22 min; GNN, 16 min).
+
+**Transfer check on the Uzbek demo bank** (synthetic, our own generator, so not a headline metric): LightGBM PR-AUC 0.195 (recall in top 2%: 53%), GNN PR-AUC 0.005 (recall in top 2%: 4%), ensemble PR-AUC 0.199 (recall in top 2%: 55%). Fan-out schemes injected live are usually flagged, often above 50%, but not for every account profile; the mule fan-in pattern of our generator is scored low. This is why a pilot retrains on the bank's own data.
 
 **Elliptic (external check of the approach, real Bitcoin transactions, test time steps 35–49):**
 
@@ -150,7 +159,7 @@ Front end, served locally with no CDN: htmx (0BSD) and Chart.js (MIT).
 ```
 src/ingest.py      data loading, one schema for AMLworld and the Uzbek data
 src/features.py    backward-looking transaction features
-src/baseline.py    LightGBM + calibration
+src/baseline.py    LightGBM in two stages + calibration
 src/gnn.py         GraphSAGE edge classifier
 src/evaluate.py    PR-AUC, precision/recall at budget, calibration
 src/explain.py     TreeSHAP reasons in plain English, evidence subgraph

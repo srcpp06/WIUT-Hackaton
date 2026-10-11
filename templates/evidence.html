@@ -21,7 +21,7 @@
 <div class="scroll"><table class="grid">
   <thead><tr><th>Model</th><th class="num">PR-AUC</th><th class="num">ROC-AUC</th><th class="num">F1</th><th class="num">Precision</th><th class="num">Recall</th>
   {% for b in m.models.ensemble.budget %}<th class="num">Top {{ '%g'|format(100 * b.top_share) }}%: precision / recall</th>{% endfor %}</tr></thead>
-  <tbody>{% for key, name in [('lgbm', 'LightGBM (baseline)'), ('gnn', 'GNN (GraphSAGE)'), ('ensemble', 'Ensemble (both)')] %}{% set r = m.models[key] %}
+  <tbody>{% for key, name in [('lgbm', 'LightGBM (two stages)'), ('gnn', 'GNN (GraphSAGE)'), ('ensemble', 'Ensemble (both)')] %}{% set r = m.models[key] %}
     <tr><td><b>{{ name }}</b></td><td class="num"><b>{{ '%.3f'|format(r.pr_auc) }}</b></td><td class="num">{{ '%.3f'|format(r.roc_auc) }}</td>
     <td class="num">{{ '%.3f'|format(r.f1_at_val_threshold.f1) }}</td><td class="num">{{ '%.1f'|format(100 * r.f1_at_val_threshold.precision) }}%</td><td class="num">{{ '%.1f'|format(100 * r.f1_at_val_threshold.recall) }}%</td>
     {% for b in r.budget %}<td class="num">{{ '%.1f'|format(100 * b.precision) }}% / {{ '%.1f'|format(100 * b.recall) }}%</td>{% endfor %}</tr>
@@ -73,7 +73,7 @@
 
 <section class="card"><h2>When the model is wrong (limitations)</h2>
   <ul>
-    <li>New, unseen schemes: the models learnt from the typologies in AMLworld. On the demo bank, fan-out (one account paying many) is found in full, but the "mule fan-in" scheme of our generator (collect from many accounts, then cash out) is scored weakly (around 5%). A pilot must therefore retrain on the bank's own data.</li>
+    <li>New, unseen schemes: the models learnt from the typologies in AMLworld. On the demo bank, fan-out (one account paying many) is usually flagged, often above 50%, though not for every account profile, while the "mule fan-in" scheme of our generator (collect from many accounts, then cash out) is scored weakly (a few percent). A pilot must therefore retrain on the bank's own data.</li>
     <li>The GNN hardly carried over from AMLworld to the Uzbek demo bank (table above): its share in the ensemble is small, and the stacking weight accounts for this automatically.</li>
     <li>New accounts with no history (cold start): the window features are empty.</li>
     <li>The training data is synthetic (IBM AMLworld), and so is the demo bank. Real performance is measured in a pilot on the bank's own data.</li>
