@@ -8,6 +8,15 @@
 {% set d = m.data %}
 <p class="muted">Data: {{ d.source }} — {{ '{:,}'.format(d.n) }} transactions, {{ '{:,}'.format(d.laundering) }} of them money laundering. Split by time: training {{ '{:,}'.format(d.split.train) }}, validation {{ '{:,}'.format(d.split.val) }}, test {{ '{:,}'.format(d.split.test) }} (the latest period: {{ d.test_period[0][:16] }} — {{ d.test_period[1][:16] }}). Every number below is measured on the test period, which the models never saw.</p>
 
+{% set e = m.models.ensemble %}{% set b01 = e.budget|selectattr('top_share', 'equalto', 0.001)|first %}{% set b1 = e.budget|selectattr('top_share', 'equalto', 0.01)|first %}
+<div class="tiles">
+  <div class="tile high"><b>{{ '%.1f'|format(100 * b01.precision) }}%</b><span>precision in the riskiest 0.1%: {{ '{:,}'.format(b01.caught) }} of {{ '{:,}'.format(b01.alerts) }} alerts are real laundering</span></div>
+  <div class="tile"><b>{{ '%.1f'|format(100 * b1.recall) }}%</b><span>of all laundering found by reviewing the riskiest 1%</span></div>
+  <div class="tile"><b>{{ '%.3f'|format(e.roc_auc) }}</b><span>ROC-AUC of the ensemble</span></div>
+  {% set ee = (elliptic.models|selectattr('name', 'equalto', 'Ensemble (stacking)')|first) if elliptic else none %}
+  {% if ee and ee.periods %}<div class="tile"><b>{{ '%.3f'|format(ee.periods['35–42'].pr_auc) }}</b><span>PR-AUC on real Bitcoin data (Elliptic) before the market shutdown, steps 35–42</span></div>{% endif %}
+</div>
+
 <h2>Ablation: baseline, GNN and ensemble (test period)</h2>
 <div class="scroll"><table class="grid">
   <thead><tr><th>Model</th><th class="num">PR-AUC</th><th class="num">ROC-AUC</th><th class="num">F1</th><th class="num">Precision</th><th class="num">Recall</th>
@@ -34,8 +43,11 @@
 {% if elliptic %}
 <section class="card"><h2>External check: Elliptic (a real Bitcoin transaction graph)</h2>
   <p class="muted">{{ elliptic.note }}</p>
-  <div class="scroll"><table class="grid"><thead><tr><th>Model</th><th class="num">PR-AUC</th><th class="num">Illicit F1</th><th class="num">Precision</th><th class="num">Recall</th></tr></thead>
-  <tbody>{% for r in elliptic.models %}<tr><td>{{ r.name }}</td><td class="num">{{ '%.3f'|format(r.pr_auc) }}</td><td class="num">{{ '%.3f'|format(r.f1) }}</td><td class="num">{{ '%.1f'|format(100 * r.precision) }}%</td><td class="num">{{ '%.1f'|format(100 * r.recall) }}%</td></tr>{% endfor %}</tbody></table></div>
+  <div class="scroll"><table class="grid"><thead><tr><th>Model</th><th class="num">PR-AUC</th><th class="num">Illicit F1</th><th class="num">Precision</th><th class="num">Recall</th>
+    {% if elliptic.models[0].periods %}{% for k in elliptic.models[0].periods %}<th class="num">Steps {{ k }}: PR-AUC / F1</th>{% endfor %}{% endif %}</tr></thead>
+  <tbody>{% for r in elliptic.models %}<tr><td>{{ r.name }}</td><td class="num">{{ '%.3f'|format(r.pr_auc) }}</td><td class="num">{{ '%.3f'|format(r.f1) }}</td><td class="num">{{ '%.1f'|format(100 * r.precision) }}%</td><td class="num">{{ '%.1f'|format(100 * r.recall) }}%</td>
+    {% for k, v in (r.periods or {}).items() %}<td class="num">{{ '%.3f'|format(v.pr_auc) }} / {{ '%.3f'|format(v.f1) }}</td>{% endfor %}</tr>{% endfor %}</tbody></table></div>
+  {% if elliptic.models[0].periods %}<p class="small muted">A large dark market was shut down at time step 43. After that the illicit transactions look different from anything in the training steps, and every model fails on them; the original paper reports the same. Before the shutdown (steps 35–42) the ensemble finds most illicit transactions; after it, nothing trained on the past does. This is why a deployed model needs regular retraining and an officer in the loop.</p>{% endif %}
 </section>
 {% endif %}
 

@@ -104,11 +104,18 @@ def main():
     stack = LogisticRegression(C=1.0).fit(Z[va], y[va])
     probs['Ensemble (stacking)'] = stack.predict_proba(Z)[:, 1]
     print(f'stacking weights: LightGBM {stack.coef_[0, 0]:.3f}, GraphSAGE {stack.coef_[0, 1]:.3f}', flush=True)
+    # A dark market closed at time step 43 (Weber et al.): after it the illicit pattern changes and no model
+    # trained on earlier steps finds it, so the test period is also reported in two parts.
+    step = f.step.to_numpy()
+    periods = {'35–42': te & (step <= 42), '43–49': te & (step >= 43)}
     for name, p in probs.items():
         thr = best_f1_threshold(y[va], p[va]); r = f1_at(y[te], p[te], thr)
         out.append({'name': name, 'pr_auc': float(average_precision_score(y[te], p[te])), 'f1': r['f1'],
-                    'precision': r['precision'], 'recall': r['recall']})
-        print(f'{name:10s} test PR-AUC {out[-1]["pr_auc"]:.4f}  illicit F1 {r["f1"]:.4f}  P {r["precision"]:.3f}  R {r["recall"]:.3f}', flush=True)
+                    'precision': r['precision'], 'recall': r['recall'],
+                    'periods': {k: {'pr_auc': float(average_precision_score(y[m], p[m])), **f1_at(y[m], p[m], thr),
+                                    'illicit': int(y[m].sum()), 'n': int(m.sum())} for k, m in periods.items()}})
+        print(f'{name:10s} test PR-AUC {out[-1]["pr_auc"]:.4f}  illicit F1 {r["f1"]:.4f}  P {r["precision"]:.3f}  R {r["recall"]:.3f}  '
+              + '  '.join(f'steps {k}: PR-AUC {v["pr_auc"]:.3f}' for k, v in out[-1]['periods'].items()), flush=True)
     note = elliptic_note(len(f), ei.shape[1], int(te.sum()))
     Path('models').mkdir(exist_ok=True)
     Path('models/elliptic.json').write_text(json.dumps({'note': note, 'models': out}, indent=2, ensure_ascii=False))
