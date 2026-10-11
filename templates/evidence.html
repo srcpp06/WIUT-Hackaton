@@ -23,7 +23,7 @@
 <div class="cols">
   <section class="card"><h2>Precision–Recall egri chiziqlari</h2><canvas id="pr" height="260"></canvas></section>
   <section class="card"><h2>Kalibrlash (ansambl)</h2><canvas id="cal" height="260"></canvas>
-    <p class="small muted">Model "5%" desa, shunday tranzaksiyalarning taxminan 5% i haqiqatan pul yuvish bo'lishi kerak: nuqtalar diagonalga yaqin bo'lsa yaxshi.</p></section>
+    <p class="small muted">Model "5%" desa, shunday tranzaksiyalarning taxminan 5% i haqiqatan pul yuvish bo'lishi kerak: nuqtalar diagonalga yaqin bo'lsa yaxshi. Har nuqta bir ehtimol oralig'i; ikkala o'q logarifmik.</p></section>
 </div>
 
 <section class="card"><h2>LightGBM uchun eng muhim belgilar</h2>
@@ -80,11 +80,13 @@ new Chart(document.getElementById('pr'), {type: 'line', data: {datasets: series.
   data: M[k].pr_curve.recall.map((r, i) => ({x: r, y: M[k].pr_curve.precision[i]}))}))},
   options: {parsing: false, animation: false, scales: {x: {type: 'linear', min: 0, max: 1, title: {display: true, text: 'Qamrov (recall)'}},
     y: {min: 0, max: 1, title: {display: true, text: 'Aniqlik (precision)'}}}, plugins: {tooltip: {mode: 'nearest', intersect: false}}}});
-const mx = Math.max(...CAL.map(c => Math.max(c.pred, c.obs))) * 1.05;
 new Chart(document.getElementById('cal'), {type: 'scatter', data: {datasets: [
-  {label: "Kuzatilgan ulush", data: CAL.map(c => ({x: c.pred, y: c.obs})), backgroundColor: '#1f9d55', pointRadius: 5},
-  {label: 'Ideal', type: 'line', data: [{x: 0, y: 0}, {x: mx, y: mx}], borderColor: ink, borderDash: [4, 4], pointRadius: 0, borderWidth: 1}]},
-  options: {animation: false, scales: {x: {min: 0, max: mx, title: {display: true, text: "Bashorat qilingan ehtimol"}}, y: {min: 0, max: mx, title: {display: true, text: "Haqiqiy ulush"}}}}});
+  {label: "Kuzatilgan ulush", data: CAL.map(c => ({x: c.pred, y: c.obs, n: c.n})), backgroundColor: '#1f9d55', pointRadius: 5},
+  {label: 'Ideal', type: 'line', data: [{x: 1e-5, y: 1e-5}, {x: 1, y: 1}], borderColor: ink, borderDash: [4, 4], pointRadius: 0, borderWidth: 1}]},
+  options: {animation: false, scales: {
+    x: {type: 'logarithmic', min: 1e-5, max: 1, title: {display: true, text: "Bashorat qilingan ehtimol (log)"}},
+    y: {type: 'logarithmic', min: 1e-5, max: 1, title: {display: true, text: "Haqiqiy ulush (log)"}}},
+    plugins: {tooltip: {callbacks: {label: c => c.raw.n ? `bashorat ${(100 * c.raw.x).toFixed(2)}%, haqiqiy ${(100 * c.raw.y).toFixed(2)}%, ${c.raw.n} ta` : ''}}}}});
 </script>
 {% endif %}
 {% endblock %}

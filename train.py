@@ -18,17 +18,10 @@ import numpy as np
 import torch
 from sklearn.isotonic import IsotonicRegression
 from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import precision_recall_curve
 
 from src import baseline, evaluate, gnn
 from src.features import build
 from src.ingest import read_amlworld, temporal_split
-
-
-def pr_points(y, prob, n=150):
-    p, r, _ = precision_recall_curve(y, prob)
-    keep = np.unique(np.linspace(0, len(p) - 1, n).astype(int))
-    return {'precision': p[keep].round(4).tolist(), 'recall': r[keep].round(4).tolist()}
 
 
 def uz_check(lgbm, model, scaler, cal_g, stack, log):
@@ -98,7 +91,7 @@ def main(a):
     results = {}
     for name in ['lgbm', 'gnn', 'ensemble']:
         thr = evaluate.best_f1_threshold(y[va], p_va[name])
-        results[name] = {**evaluate.report(y[te], p_te[name], thr), 'pr_curve': pr_points(y[te], p_te[name])}
+        results[name] = {**evaluate.report(y[te], p_te[name], thr), 'pr_curve': evaluate.pr_points(y[te], p_te[name])}
         log(f'{name:9s} test PR-AUC {results[name]["pr_auc"]:.4f}  ROC-AUC {results[name]["roc_auc"]:.4f}  '
             f'F1 {results[name]["f1_at_val_threshold"]["f1"]:.4f}')
     timing['total_s'] = time.time() - t0

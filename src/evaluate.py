@@ -26,12 +26,22 @@ def f1_at(y, prob, thr):
     return {'threshold': thr, 'precision': prec, 'recall': rec, 'f1': 2 * prec * rec / max(prec + rec, 1e-12)}
 
 
-def calibration(y, prob, bins=10):
-    """Mean predicted vs observed rate in equal-count bins of the predicted probability."""
-    order = np.argsort(prob, kind='stable'); out = []
-    for idx in np.array_split(order, bins):
-        out.append({'pred': float(prob[idx].mean()), 'obs': float(y[idx].mean()), 'n': int(len(idx))})
+def calibration(y, prob, edges=(0, 0.001, 0.003, 0.01, 0.03, 0.1, 0.3, 0.6, 1.0001)):
+    """Mean predicted vs observed rate in fixed probability bins (rare events: most mass sits near 0)."""
+    out = []
+    for lo, hi in zip(edges[:-1], edges[1:]):
+        m = (prob >= lo) & (prob < hi)
+        if m.sum() >= 20:
+            out.append({'pred': float(prob[m].mean()), 'obs': float(y[m].mean()), 'n': int(m.sum())})
     return out
+
+
+def pr_points(y, prob, n=120):
+    """Precision-recall curve on an even recall grid (interpolated precision: best precision at recall >= r)."""
+    p, r, _ = precision_recall_curve(y, prob)
+    grid = np.linspace(0, 1, n)
+    best = np.array([p[r >= g].max() if (r >= g).any() else 0.0 for g in grid])
+    return {'precision': best.round(4).tolist(), 'recall': grid.round(4).tolist()}
 
 
 def report(y, prob, thr):
