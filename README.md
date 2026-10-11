@@ -64,7 +64,7 @@ Reviewing the riskiest 1% finds 79.4% of all laundering.
 
 Stacking weights (fitted on validation): LightGBM 0.84, GNN 0.04. The GNN alone is much weaker than LightGBM here, but it still adds about +0.02 PR-AUC to the ensemble.
 
-**Live, on the demo server (2 ARM cores):** a new transaction is scored in 264 ms (median, p95 271 ms, 24 live requests) including the graph refresh; CPU cost about $2.20 per million transactions (Oracle A1 list price). Training both models on 5.1M transactions takes about 18 minutes on a laptop CPU.
+**Live, on the demo server (2 ARM cores):** a new transaction is scored in 264 ms (median, p95 297 ms, 24 live requests) including the graph refresh; CPU cost about $2.22 per million transactions (Oracle A1 list price). Training both models on 5.1M transactions takes about 18 minutes on a laptop CPU.
 
 **Transfer check on the Uzbek demo bank** (synthetic, our own generator, so not a headline metric): LightGBM PR-AUC 0.147 (recall in top 2%: 59%), GNN PR-AUC 0.005 (recall in top 2%: 4%), ensemble PR-AUC 0.154 (recall in top 2%: 60%). Fan-out schemes injected live are flagged; the mule fan-in pattern of our generator is scored low. This is why a pilot retrains on the bank's own data.
 
