@@ -61,7 +61,8 @@
 
 <section class="card"><h2>Model qachon xato qiladi (cheklovlar)</h2>
   <ul>
-    <li>Yangi, hali ko'rilmagan sxemalar: modellar AMLworld'dagi tipologiyalardan o'rgangan.</li>
+    <li>Yangi, hali ko'rilmagan sxemalar: modellar AMLworld'dagi tipologiyalardan o'rgangan. Demo bankda tekshirdik: bir hisobdan ko'p hisobga tarqatish (fan-out) to'liq topiladi, lekin bizning generatorimizdagi "mule fan-in" (ko'p hisobdan yig'ib, naqdlashtirish) sxemasini model kuchsiz baholaydi (ehtimol 5% atrofida). Shuning uchun pilotda bankning o'z ma'lumotida qayta o'qitish shart.</li>
+    <li>GNN AMLworld'dan o'zbek demo bankiga deyarli ko'chmadi (yuqoridagi jadval): uning hissasi ansamblda kichik va stacking og'irligi buni avtomatik hisobga oladi.</li>
     <li>Tarixi yo'q yangi hisoblar (cold start): oynalardagi belgilar bo'sh bo'ladi.</li>
     <li>O'quv ma'lumoti sintetik (IBM AMLworld); demo bank ham sintetik. Haqiqiy samaradorlik bankning o'z ma'lumotida pilotda o'lchanadi.</li>
     <li>UZS → USD qat'iy kurs bilan o'giriladi; o'zbek to'lov kanallari AMLworld formatlariga yaqinlik bo'yicha moslangan (README'da e'lon qilingan).</li>

@@ -9,8 +9,8 @@ from .ingest import UZS_PER_USD
 
 # (key, Uzbek title, rule on the feature name); the first matching rule wins
 GROUPS = [
-    ('fan_in', "Qabul qiluvchiga ko'p turli hisobdan pul kelmoqda (yig'ish)", lambda c: c.startswith(('r_cp_in', 'r_n_in'))),
-    ('fan_out', "Jo'natuvchi pulni ko'p turli hisobga tarqatmoqda", lambda c: c.startswith(('s_cp_out', 's_n_out'))),
+    ('fan_in', "Qabul qiluvchiga ko'p yangi hisobdan pul kelmoqda (yig'ish)", lambda c: c.startswith(('r_cp_in', 'r_n_in'))),
+    ('fan_out', "Jo'natuvchi pulni ko'p yangi hisobga tarqatmoqda", lambda c: c.startswith(('s_cp_out', 's_n_out'))),
     ('pass', "Pul hisobdan tez o'tib ketmoqda (tranzit)",
      lambda c: c in ('s_prev_in', 's_pass_1d', 'amt_vs_s_in_1d', 'r_prev_in') or c.startswith(('s_usd_in', 'r_usd_out'))),
     ('relation', "Jo'natuvchi va qabul qiluvchi o'rtasidagi aloqa tarixi", lambda c: c.startswith('pair_')),
@@ -60,11 +60,11 @@ class Explainer:
         g = lambda f: float(x.get(f, np.nan))
         med = lambda f: self.median.get(f, np.nan)
         if k == 'fan_in':
-            return (f"Qabul qiluvchi oxirgi 24 soatda {g('r_cp_in_1d'):.0f} ta, 7 kunda {g('r_cp_in_7d'):.0f} ta turli hisobdan "
-                    f"pul olgan (odatiy hisobda 7 kunda {med('r_cp_in_7d'):.0f} ta).")
+            return (f"Qabul qiluvchi oxirgi 24 soatda {g('r_n_in_1d'):.0f} ta to'lov olgan; ulardan {g('r_cp_in_1d'):.0f} tasi "
+                    f"ilgari unga pul yubormagan yangi hisoblardan (7 kunda {g('r_cp_in_7d'):.0f} ta; odatiy hisobda {med('r_cp_in_7d'):.0f} ta).")
         if k == 'fan_out':
-            return (f"Jo'natuvchi oxirgi 24 soatda {g('s_cp_out_1d'):.0f} ta, 7 kunda {g('s_cp_out_7d'):.0f} ta turli hisobga "
-                    f"pul yuborgan (odatiy hisobda 7 kunda {med('s_cp_out_7d'):.0f} ta).")
+            return (f"Jo'natuvchi oxirgi 24 soatda {g('s_n_out_1d'):.0f} ta to'lov qilgan; {g('s_cp_out_1d'):.0f} tasi ilgari "
+                    f"pul yubormagan yangi hisoblarga (7 kunda {g('s_cp_out_7d'):.0f} ta; odatiy hisobda {med('s_cp_out_7d'):.0f} ta).")
         if k == 'pass':
             if not np.isfinite(g('s_prev_in')):
                 return "Jo'natuvchiga bundan oldin pul kelmagan: bu to'lov hisobning birinchi chiqimlaridan."
