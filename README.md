@@ -5,6 +5,10 @@ hackathon final (partner: MKBANK anti-fraud / AML desk).
 
 **Live demo: https://flowlens.132-226-186-157.sslip.io**
 
+**Mode: partner product.** FlowLens runs inside the MKBANK anti-fraud and AML unit and changes how
+suspicious-payment alerts are reviewed: ranked by risk, explained, decided by an officer and audited.
+Built during the final by Algo Vanguard: Erkin Ismatilloyev, Shoxrux Ibragimov, Dovud Elmurodov.
+
 FlowLens scores every transaction with two trained models, a LightGBM baseline and a graph neural
 network (GraphSAGE), explains each alert in plain English or Russian and leaves the decision to a human officer.
 No LLM and no external API sit on the decision path; everything runs on one CPU server.
