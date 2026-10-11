@@ -51,7 +51,19 @@ transactions ─▶ ingest: one schema for AMLworld and the Uzbek data (amounts 
 All numbers are measured on data the models never saw during training; the Evidence page shows
 them live from `models/metrics.json`.
 
-**IBM AMLworld HI-Small, test period:** _to be filled in by `train.py`._
+**IBM AMLworld HI-Small, test period** (1,015,669 transactions from 2022-09-08 16:12 to 2022-09-18 16:18, laundering share 0.18%):
+
+| Model | PR-AUC | ROC-AUC | F1 | Precision / recall at F1 threshold | Precision / recall in the top 1% |
+|---|---|---|---|---|---|
+| LightGBM | 0.658 | 0.978 | 0.700 | 85.1% / 59.5% | 13.9% / 78.3% |
+| GraphSAGE alone | 0.218 | 0.951 | 0.215 | 69.6% / 12.7% | 8.3% / 46.8% |
+| Stacking ensemble | 0.679 | 0.988 | 0.692 | 89.8% / 56.3% | 14.0% / 79.4% |
+
+Stacking weights (fitted on validation): LightGBM 0.84, GNN 0.04. The GNN alone is much weaker than LightGBM here, but it still adds about +0.02 PR-AUC to the ensemble.
+
+**Live, on the demo server (2 ARM cores):** a new transaction is scored in 265 ms (median, p95 277 ms) including the graph refresh; CPU cost about $1.60 per million transactions (Oracle A1 list price). Training both models on 5.1M transactions takes about 18 minutes on a laptop CPU.
+
+**Transfer check on the Uzbek demo bank** (synthetic, our own generator, so not a headline metric): LightGBM PR-AUC 0.147 (recall in top 2%: 59%), GNN PR-AUC 0.005 (recall in top 2%: 4%), ensemble PR-AUC 0.154 (recall in top 2%: 60%). Fan-out schemes injected live are flagged; the mule fan-in pattern of our generator is scored low. This is why a pilot retrains on the bank's own data.
 
 **Elliptic (external check of the approach, real Bitcoin transactions, test time steps 35–49):**
 
