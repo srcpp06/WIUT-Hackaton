@@ -125,7 +125,7 @@ class Service:
             self.latency.append((wall / len(new), cpu / len(new)))
             return {'rows': new, 'ms_total': round(wall, 1), 'ms_per_tx': round(wall / len(new), 1)}
 
-    def score_frame(self, df):
+    def score_frame(self, df, lang='en'):
         """Score a separate dataset (a jury CSV) on its own graph; nothing is merged into the demo bank."""
         w0, c0 = time.perf_counter(), time.process_time()
         t = from_uz(df.with_row_index('row').with_columns(pl.col('row').cast(pl.Int64)))
@@ -141,7 +141,7 @@ class Service:
             r = t.row(int(i), named=True)
             item = self._row_dict(r, p[i], p_l[i], p_g[i], None)
             if j < 10:
-                item['reasons'] = ex.reasons(contrib[j], X.iloc[int(i)].to_dict(), r, top=2)
+                item['reasons'] = ex.reasons(contrib[j], X.iloc[int(i)].to_dict(), r, top=2, lang=lang)
             out.append(item)
         return {'n': t.height, 'ms_total': round(wall, 1), 'ms_per_tx': round(wall / t.height, 2), 'top': out,
                 'flagged': int((p >= np.quantile(p, 1 - MEDIUM)).sum()) if t.height > 50 else None}
@@ -165,12 +165,12 @@ class Service:
         counts = {k: int((self.level == k).sum()) for k in ('high', 'medium', 'low')}
         return {'items': items, 'counts': counts, 'total': len(idx)}
 
-    def alert(self, row):
+    def alert(self, row, lang='en'):
         i = self.pos[row]
         r = self.t.row(i, named=True)
         contrib = self.m.lgbm.contributions(self.X.iloc[[i]])[0]
         d = self._row_dict(r, self.p[i], self.p_l[i], self.p_g[i], self.level[i])
-        d.update(reasons=self.explainer.reasons(contrib, self.X.iloc[i].to_dict(), r),
+        d.update(reasons=self.explainer.reasons(contrib, self.X.iloc[i].to_dict(), r, lang=lang),
                  graph=subgraph(self.t, self.p, r['src'], r['dst'], r['ts'], row),
                  rank=int(self.rank[i]) + 1, n=len(self.rank), amount_usd=float(r['amount_usd']),
                  src_info=self.owner(r['src']), dst_info=self.owner(r['dst']),

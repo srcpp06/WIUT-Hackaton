@@ -6,10 +6,13 @@ hackathon final (partner: MKBANK anti-fraud / AML desk).
 **Live demo: https://flowlens.132-226-186-157.sslip.io**
 
 FlowLens scores every transaction with two trained models, a LightGBM baseline and a graph neural
-network (GraphSAGE), explains each alert in plain English and leaves the decision to a human officer.
+network (GraphSAGE), explains each alert in plain English or Russian and leaves the decision to a human officer.
 No LLM and no external API sit on the decision path; everything runs on one CPU server.
 
 ## What you can do in the demo
+
+The interface is in English and Russian (EN / RU switch, remembered in a cookie) with light and dark themes
+(system default or the visitor's choice).
 
 | Page | What it shows |
 |---|---|
@@ -162,7 +165,8 @@ src/features.py    backward-looking transaction features
 src/baseline.py    LightGBM in two stages + calibration
 src/gnn.py         GraphSAGE edge classifier
 src/evaluate.py    PR-AUC, precision/recall at budget, calibration
-src/explain.py     TreeSHAP reasons in plain English, evidence subgraph
+src/explain.py     TreeSHAP reasons in English and Russian, evidence subgraph
+src/i18n.py        English and Russian interface text
 src/generator.py   Uzbek synthetic demo bank (CC0)
 src/service.py     scoring, live injection, CSV scoring, audit
 src/app.py         FastAPI routes; templates/ and static/ hold the UI

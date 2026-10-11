@@ -1,104 +1,113 @@
 {% extends "base.html" %}{% set active = 'evidence' %}
-{% block title %}Evidence{% endblock %}
+{% block title %}{{ _('Evidence') }}{% endblock %}
 {% block body %}
-<h1>Evidence: how good are the models</h1>
+<h1>{{ _('Evidence: how good are the models') }}</h1>
 {% if not m.models %}
-<div class="banner warn">No real metrics yet: they appear here once the models are trained on AMLworld.</div>
+<div class="banner warn">{{ _('No real metrics yet: they appear here once the models are trained on AMLworld.') }}</div>
 {% else %}
 {% set d = m.data %}
-<p class="muted">Data: {{ d.source }} — {{ '{:,}'.format(d.n) }} transactions, {{ '{:,}'.format(d.laundering) }} of them money laundering. Split by time: training {{ '{:,}'.format(d.split.train) }}, validation {{ '{:,}'.format(d.split.val) }}, test {{ '{:,}'.format(d.split.test) }} (the latest period: {{ d.test_period[0][:16] }} — {{ d.test_period[1][:16] }}). Every number below is measured on the test period, which the models never saw.</p>
+<p class="lead">{{ _('Data: {src} — {n} transactions, {l} of them money laundering. Split by time: training {tr}, validation {va}, test {te} (the latest period: {a} — {b}). Every number below is measured on the test period, which the models never saw.').format(src=d.source, n=num(d.n), l=num(d.laundering), tr=num(d.split.train), va=num(d.split.val), te=num(d.split.test), a=d.test_period[0][:16], b=d.test_period[1][:16]) }}</p>
 
-{% set e = m.models.ensemble %}{% set b01 = e.budget|selectattr('top_share', 'equalto', 0.001)|first %}{% set b1 = e.budget|selectattr('top_share', 'equalto', 0.01)|first %}
+{% set e = m.models.ensemble %}{% set b01 = e.budget|selectattr('top_share', 'equalto', 0.001)|first %}{% set b1 = e.budget|selectattr('top_share', 'equalto', 0.01)|first %}{% set f = e.f1_at_val_threshold %}
 <div class="tiles">
-  <div class="tile high"><b>{{ '%.1f'|format(100 * b01.precision) }}%</b><span>precision in the riskiest 0.1%: {{ '{:,}'.format(b01.caught) }} of {{ '{:,}'.format(b01.alerts) }} alerts are real laundering</span></div>
-  <div class="tile"><b>{{ '%.1f'|format(100 * b1.recall) }}%</b><span>of all laundering found by reviewing the riskiest 1%</span></div>
-  <div class="tile"><b>{{ '%.3f'|format(e.roc_auc) }}</b><span>ROC-AUC of the ensemble</span></div>
-  {% set ee = (elliptic.models|selectattr('name', 'equalto', 'Ensemble (stacking)')|first) if elliptic else none %}
-  {% if ee and ee.periods %}<div class="tile"><b>{{ '%.3f'|format(ee.periods['35–42'].pr_auc) }}</b><span>PR-AUC on real Bitcoin data (Elliptic) before the market shutdown, steps 35–42</span></div>{% endif %}
+  <div class="tile high"><b data-count="{{ 100 * b01.precision }}" data-dec="1" data-suffix="%">{{ pct(b01.precision) }}</b><span>{{ _('precision in the riskiest 0.1%: {c} of {a} alerts are real laundering').format(c=num(b01.caught), a=num(b01.alerts)) }}</span></div>
+  <div class="tile"><b data-count="{{ 100 * f.precision }}" data-dec="1" data-suffix="%">{{ pct(f.precision) }}</b><span>{{ _('precision at the threshold chosen on validation (recall {r})').format(r=pct(f.recall)) }}</span></div>
+  <div class="tile"><b data-count="{{ 100 * b1.recall }}" data-dec="1" data-suffix="%">{{ pct(b1.recall) }}</b><span>{{ _('of all laundering found by reviewing the riskiest 1%') }}</span></div>
+  <div class="tile"><b data-count="{{ e.pr_auc }}" data-dec="3">{{ num(e.pr_auc, 3) }}</b><span>{{ _('PR-AUC of the ensemble (random: {r})').format(r=pct(e.base_rate, 2)) }}</span></div>
+  <div class="tile"><b data-count="{{ e.roc_auc }}" data-dec="3">{{ num(e.roc_auc, 3) }}</b><span>{{ _('ROC-AUC of the ensemble') }}</span></div>
 </div>
 
-<h2>Ablation: baseline, GNN and ensemble (test period)</h2>
+<h2 class="section-title">{{ _('Ablation: LightGBM, GNN and ensemble (test period)') }}</h2>
 <div class="scroll"><table class="grid">
-  <thead><tr><th>Model</th><th class="num">PR-AUC</th><th class="num">ROC-AUC</th><th class="num">F1</th><th class="num">Precision</th><th class="num">Recall</th>
-  {% for b in m.models.ensemble.budget %}<th class="num">Top {{ '%g'|format(100 * b.top_share) }}%: precision / recall</th>{% endfor %}</tr></thead>
+  <thead><tr><th>{{ _('Model') }}</th><th class="num">PR-AUC</th><th class="num">ROC-AUC</th><th class="num">F1</th><th class="num">{{ _('Precision') }}</th><th class="num">{{ _('Recall') }}</th>
+  {% for b in e.budget %}<th class="num">{{ _('Top {s}%: precision / recall').format(s=('%g'|format(100 * b.top_share)).replace('.', ',') if lang == 'ru' else '%g'|format(100 * b.top_share)) }}</th>{% endfor %}</tr></thead>
   <tbody>{% for key, name in [('lgbm', 'LightGBM (two stages)'), ('gnn', 'GNN (GraphSAGE)'), ('ensemble', 'Ensemble (both)')] %}{% set r = m.models[key] %}
-    <tr><td><b>{{ name }}</b></td><td class="num"><b>{{ '%.3f'|format(r.pr_auc) }}</b></td><td class="num">{{ '%.3f'|format(r.roc_auc) }}</td>
-    <td class="num">{{ '%.3f'|format(r.f1_at_val_threshold.f1) }}</td><td class="num">{{ '%.1f'|format(100 * r.f1_at_val_threshold.precision) }}%</td><td class="num">{{ '%.1f'|format(100 * r.f1_at_val_threshold.recall) }}%</td>
-    {% for b in r.budget %}<td class="num">{{ '%.1f'|format(100 * b.precision) }}% / {{ '%.1f'|format(100 * b.recall) }}%</td>{% endfor %}</tr>
+    <tr class="{{ 'hl' if key == 'ensemble' }}"><td><b>{{ _(name) }}</b></td><td class="num"><b>{{ num(r.pr_auc, 3) }}</b></td><td class="num">{{ num(r.roc_auc, 3) }}</td>
+    <td class="num">{{ num(r.f1_at_val_threshold.f1, 3) }}</td><td class="num">{{ pct(r.f1_at_val_threshold.precision) }}</td><td class="num">{{ pct(r.f1_at_val_threshold.recall) }}</td>
+    {% for b in r.budget %}<td class="num">{{ pct(b.precision) }} / {{ pct(b.recall) }}</td>{% endfor %}</tr>
   {% endfor %}</tbody>
 </table></div>
-<p class="small muted">PR-AUC is the main metric for rare events (a random model scores the base rate, {{ '%.2f'|format(100 * m.models.ensemble.base_rate) }}%). F1, precision and recall use the threshold chosen on the validation period. "Top X%": if officers review only the riskiest X% of transactions, how many of those are really laundering (precision) and what share of all laundering they find (recall).</p>
+<p class="small muted">{{ _('PR-AUC is the main metric for rare events (a random model scores the base rate, {r}). F1, precision and recall use the threshold chosen on the validation period. "Top X%": if officers review only the riskiest X% of transactions, how many of those are really laundering (precision) and what share of all laundering they find (recall).').format(r=pct(e.base_rate, 2)) }}</p>
 
 <div class="cols">
-  <section class="card"><h2>Precision–recall curves</h2><canvas id="pr" height="260"></canvas></section>
-  <section class="card"><h2>Calibration (ensemble)</h2><canvas id="cal" height="260"></canvas>
-    <p class="small muted">When the model says "5%", about 5% of such transactions should really be laundering: points close to the diagonal are good. Each point is one probability bin; both axes are logarithmic.</p></section>
+  <section class="card"><h2>{{ _('Precision–recall curves') }}</h2><canvas id="pr" height="260"></canvas></section>
+  <section class="card"><h2>{{ _('Calibration (ensemble)') }}</h2><canvas id="cal" height="260"></canvas>
+    <p class="small muted">{{ _('When the model says "5%", about 5% of such transactions should really be laundering: points close to the diagonal are good. Each point is one probability bin; both axes are logarithmic.') }}</p></section>
 </div>
 
-<section class="card"><h2>Most important LightGBM features</h2>
+<section class="card"><h2>{{ _('Most important LightGBM features') }}</h2>
   <ol class="cols3">{% for k, v in m.importance.items() %}<li><code>{{ k }}</code></li>{% endfor %}</ol>
 </section>
 {% endif %}
 
 {% if elliptic %}
-<section class="card"><h2>External check: Elliptic (a real Bitcoin transaction graph)</h2>
-  <p class="muted">{{ elliptic.note }}</p>
-  <div class="scroll"><table class="grid"><thead><tr><th>Model</th><th class="num">PR-AUC</th><th class="num">Illicit F1</th><th class="num">Precision</th><th class="num">Recall</th>
-    {% if elliptic.models[0].periods %}{% for k in elliptic.models[0].periods %}<th class="num">Steps {{ k }}: PR-AUC / F1</th>{% endfor %}{% endif %}</tr></thead>
-  <tbody>{% for r in elliptic.models %}<tr><td>{{ r.name }}</td><td class="num">{{ '%.3f'|format(r.pr_auc) }}</td><td class="num">{{ '%.3f'|format(r.f1) }}</td><td class="num">{{ '%.1f'|format(100 * r.precision) }}%</td><td class="num">{{ '%.1f'|format(100 * r.recall) }}%</td>
-    {% for k, v in (r.periods or {}).items() %}<td class="num">{{ '%.3f'|format(v.pr_auc) }} / {{ '%.3f'|format(v.f1) }}</td>{% endfor %}</tr>{% endfor %}</tbody></table></div>
-  {% if elliptic.models[0].periods %}<p class="small muted">A large dark market was shut down at time step 43. After that the illicit transactions look different from anything in the training steps, and every model fails on them; the original paper reports the same. Before the shutdown (steps 35–42) the ensemble finds most illicit transactions; after it, nothing trained on the past does. This is why a deployed model needs regular retraining and an officer in the loop.</p>{% endif %}
+<section class="card"><h2>{{ _('External check: Elliptic (a real Bitcoin transaction graph)') }}</h2>
+  <p class="muted">{% if elliptic.counts %}{{ _('Elliptic (Weber et al., 2019): {n} Bitcoin transactions, {e} edges. Time steps 1–29 train, 30–34 validation, 35–49 test ({t} labelled transactions). A different domain (crypto, a transaction is a node), so this checks the approach itself, not the bank model.').format(n=num(elliptic.counts.transactions), e=num(elliptic.counts.edges), t=num(elliptic.counts.test_labelled)) }}{% else %}{{ elliptic.note }}{% endif %}</p>
+  <div class="scroll"><table class="grid"><thead><tr><th>{{ _('Model') }}</th><th class="num">PR-AUC</th><th class="num">{{ _('Illicit F1') }}</th><th class="num">{{ _('Precision') }}</th><th class="num">{{ _('Recall') }}</th>
+    {% if elliptic.models[0].periods %}{% for k in elliptic.models[0].periods %}<th class="num">{{ _('Steps {k}: PR-AUC / F1').format(k=k) }}</th>{% endfor %}{% endif %}</tr></thead>
+  <tbody>{% for r in elliptic.models %}<tr class="{{ 'hl' if 'stacking' in r.name }}"><td>{{ _(r.name) }}</td><td class="num">{{ num(r.pr_auc, 3) }}</td><td class="num">{{ num(r.f1, 3) }}</td><td class="num">{{ pct(r.precision) }}</td><td class="num">{{ pct(r.recall) }}</td>
+    {% for k, v in (r.periods or {}).items() %}<td class="num">{{ num(v.pr_auc, 3) }} / {{ num(v.f1, 3) }}</td>{% endfor %}</tr>{% endfor %}</tbody></table></div>
+  {% if elliptic.models[0].periods %}<p class="small muted">{{ _('A large dark market was shut down at time step 43. After that the illicit transactions look different from anything in the training steps, and every model fails on them; the original paper reports the same. Before the shutdown (steps 35–42) the ensemble finds most illicit transactions; after it, nothing trained on the past does. This is why a deployed model needs regular retraining and an officer in the loop.') }}</p>{% endif %}
 </section>
 {% endif %}
 
 {% if uzcheck %}
-<section class="card"><h2>Check on the synthetic Uzbek demo bank</h2>
-  <p class="muted">{{ uzcheck.note }}</p>
-  <div class="scroll"><table class="grid"><thead><tr><th>Model</th><th class="num">PR-AUC</th><th class="num">Top 2%: recall</th></tr></thead>
-  <tbody>{% for r in uzcheck.models %}<tr><td>{{ r.name }}</td><td class="num">{{ '%.3f'|format(r.pr_auc) }}</td><td class="num">{{ '%.1f'|format(100 * r.recall_top2) }}%</td></tr>{% endfor %}</tbody></table></div>
+<section class="card"><h2>{{ _('Check on the synthetic Uzbek demo bank') }}</h2>
+  <p class="muted">{% if uzcheck.counts %}{{ _('Models trained on AMLworld, run on the Uzbek demo bank ({n} transactions, {p} of them in planted schemes, share {s}). This data is synthetic too and we wrote its generator ourselves, so this is not a headline metric: it only shows how the models carry over to other payment rails and another currency.').format(n=num(uzcheck.counts.transactions), p=num(uzcheck.counts.planted), s=pct(uzcheck.counts.planted / uzcheck.counts.transactions, 2)) }}{% else %}{{ uzcheck.note }}{% endif %}</p>
+  <div class="scroll"><table class="grid"><thead><tr><th>{{ _('Model') }}</th><th class="num">PR-AUC</th><th class="num">{{ _('Top 2%: recall') }}</th></tr></thead>
+  <tbody>{% for r in uzcheck.models %}<tr><td>{{ _(r.name) }}</td><td class="num">{{ num(r.pr_auc, 3) }}</td><td class="num">{{ pct(r.recall_top2) }}</td></tr>{% endfor %}</tbody></table></div>
 </section>
 {% endif %}
 
-<section class="card"><h2>Speed and cost (measured live on this server)</h2>
+<section class="card"><h2>{{ _('Speed and cost (measured live on this server)') }}</h2>
   {% if live %}
   <div class="tiles">
-    <div class="tile"><b>{{ '%.0f'|format(live.p50_ms) }} ms</b><span>per transaction, median (p50)</span></div>
-    <div class="tile"><b>{{ '%.0f'|format(live.p95_ms) }} ms</b><span>p95</span></div>
-    <div class="tile"><b>{{ '%.0f'|format(live.cpu_ms) }} ms</b><span>CPU time, mean</span></div>
-    <div class="tile"><b>${{ '%.2f'|format(live.usd_per_million) }}</b><span>per million transactions (CPU cost)</span></div>
+    <div class="tile"><b data-count="{{ live.p50_ms }}" data-suffix=" ms">{{ num(live.p50_ms) }} ms</b><span>{{ _('per transaction, median (p50)') }}</span></div>
+    <div class="tile"><b data-count="{{ live.p95_ms }}" data-suffix=" ms">{{ num(live.p95_ms) }} ms</b><span>p95</span></div>
+    <div class="tile"><b data-count="{{ live.cpu_ms }}" data-suffix=" ms">{{ num(live.cpu_ms) }} ms</b><span>{{ _('CPU time, mean') }}</span></div>
+    <div class="tile ok"><b data-count="{{ live.usd_per_million }}" data-dec="2" data-prefix="$">${{ num(live.usd_per_million, 2) }}</b><span>{{ _('per million transactions (CPU cost)') }}</span></div>
   </div>
-  <p class="small muted">Over {{ live.n }} live requests: features + LightGBM + GNN. Cost: Oracle A1 list price (2 OCPU + 12 GB = $0.038/hour), assuming a fully loaded server. No external API fees.</p>
-  {% else %}<p class="muted">No live requests yet: add transactions on the "Live input" or "CSV" page.</p>{% endif %}
+  <p class="small muted">{{ _('Over {n} live requests: features + LightGBM + GNN. Cost: Oracle A1 list price (2 OCPU + 12 GB = $0.038/hour), assuming a fully loaded server. No external API fees.').format(n=live.n) }}</p>
+  {% else %}<p class="muted">{{ _('No live requests yet: add transactions on the "Live input" or "CSV" page.') }}</p>{% endif %}
 </section>
 
-<section class="card"><h2>When the model is wrong (limitations)</h2>
+<section class="card"><h2>{{ _('When the model is wrong (limitations)') }}</h2>
   <ul>
-    <li>New, unseen schemes: the models learnt from the typologies in AMLworld. On the demo bank, fan-out (one account paying many) is usually flagged, often above 50%, though not for every account profile, while the "mule fan-in" scheme of our generator (collect from many accounts, then cash out) is scored weakly (a few percent). A pilot must therefore retrain on the bank's own data.</li>
-    <li>The GNN hardly carried over from AMLworld to the Uzbek demo bank (table above): its share in the ensemble is small, and the stacking weight accounts for this automatically.</li>
-    <li>New accounts with no history (cold start): the window features are empty.</li>
-    <li>The training data is synthetic (IBM AMLworld), and so is the demo bank. Real performance is measured in a pilot on the bank's own data.</li>
-    <li>UZS is converted to USD at a fixed rate; Uzbek payment rails are mapped to the closest AMLworld formats (declared in the README).</li>
+    <li>{{ _('New, unseen schemes: the models learnt from the typologies in AMLworld. On the demo bank, fan-out (one account paying many) is usually flagged, often above 50%, though not for every account profile, while the "mule fan-in" scheme of our generator (collect from many accounts, then cash out) is scored weakly (a few percent). A pilot must therefore retrain on the bank\'s own data.') }}</li>
+    <li>{{ _('The GNN hardly carried over from AMLworld to the Uzbek demo bank (table above): its share in the ensemble is small, and the stacking weight accounts for this automatically.') }}</li>
+    <li>{{ _('New accounts with no history (cold start): the window features are empty.') }}</li>
+    <li>{{ _('The training data is synthetic (IBM AMLworld), and so is the demo bank. Real performance is measured in a pilot on the bank\'s own data.') }}</li>
+    <li>{{ _('UZS is converted to USD at a fixed rate; Uzbek payment rails are mapped to the closest AMLworld formats (declared in the README).') }}</li>
   </ul>
 </section>
 
 {% if m.models %}
 <script src="/static/vendor/chart.umd.min.js"></script>
 <script>
-const M = {{ m.models|tojson }}, CAL = {{ m.calibration|tojson }};
-const css = getComputedStyle(document.documentElement), ink = css.getPropertyValue('--muted').trim();
-const series = [['lgbm', 'LightGBM', '#2a6fdb'], ['gnn', 'GNN', '#d9822b'], ['ensemble', 'Ensemble', '#1f9d55']];
-Chart.defaults.color = ink;
-new Chart(document.getElementById('pr'), {type: 'line', data: {datasets: series.map(([k, n, c]) => ({label: n, borderColor: c, backgroundColor: c, borderWidth: 2, pointRadius: 0,
-  data: M[k].pr_curve.recall.map((r, i) => ({x: r, y: M[k].pr_curve.precision[i]}))}))},
-  options: {parsing: false, animation: false, scales: {x: {type: 'linear', min: 0, max: 1, title: {display: true, text: 'Recall'}},
-    y: {min: 0, max: 1, title: {display: true, text: 'Precision'}}}, plugins: {tooltip: {mode: 'nearest', intersect: false}}}});
-new Chart(document.getElementById('cal'), {type: 'scatter', data: {datasets: [
-  {label: 'Observed rate', data: CAL.map(c => ({x: c.pred, y: c.obs, n: c.n})), backgroundColor: '#1f9d55', pointRadius: 5},
-  {label: 'Ideal', type: 'line', data: [{x: 1e-5, y: 1e-5}, {x: 1, y: 1}], borderColor: ink, borderDash: [4, 4], pointRadius: 0, borderWidth: 1}]},
-  options: {animation: false, scales: {
-    x: {type: 'logarithmic', min: 1e-5, max: 1, title: {display: true, text: 'Predicted probability (log)'}},
-    y: {type: 'logarithmic', min: 1e-5, max: 1, title: {display: true, text: 'Observed rate (log)'}}},
-    plugins: {tooltip: {callbacks: {label: c => c.raw.n ? `predicted ${(100 * c.raw.x).toFixed(2)}%, observed ${(100 * c.raw.y).toFixed(2)}%, ${c.raw.n.toLocaleString('en-US')} transactions` : ''}}}}});
+const M = {{ m.models|tojson }}, CAL = {{ m.calibration|tojson }}, LANG = {{ lang|tojson }};
+const T = {{ {'recall': _('Recall'), 'precision': _('Precision'), 'observed': _('Observed rate'), 'ideal': _('Ideal'), 'pred': _('Predicted probability (log)'),
+             'obs': _('Observed rate (log)'), 'ens': _('Ensemble'), 'tip': _('predicted {p}, observed {o}, {n} transactions')}|tojson }};
+const charts = [];
+function draw() {
+  charts.splice(0).forEach((c) => c.destroy());
+  const css = getComputedStyle(document.documentElement), ink = css.getPropertyValue('--muted').trim(), grid = css.getPropertyValue('--line').trim();
+  const series = [['lgbm', 'LightGBM', css.getPropertyValue('--accent').trim()], ['gnn', 'GNN', '#d9822b'], ['ensemble', T.ens, '#16a34a']];
+  const pf = (v) => (100 * v).toLocaleString(LANG, {maximumFractionDigits: 2}) + '%';
+  Chart.defaults.color = ink; Chart.defaults.borderColor = grid;
+  charts.push(new Chart(document.getElementById('pr'), {type: 'line', data: {datasets: series.map(([k, n, c]) => ({label: n, borderColor: c, backgroundColor: c, borderWidth: 2.2, pointRadius: 0,
+    data: M[k].pr_curve.recall.map((r, i) => ({x: r, y: M[k].pr_curve.precision[i]}))}))},
+    options: {parsing: false, animation: {duration: 900}, scales: {x: {type: 'linear', min: 0, max: 1, title: {display: true, text: T.recall}},
+      y: {min: 0, max: 1, title: {display: true, text: T.precision}}}, plugins: {tooltip: {mode: 'nearest', intersect: false}}}}));
+  charts.push(new Chart(document.getElementById('cal'), {type: 'scatter', data: {datasets: [
+    {label: T.observed, data: CAL.map((c) => ({x: c.pred, y: c.obs, n: c.n})), backgroundColor: '#16a34a', pointRadius: 5, pointHoverRadius: 7},
+    {label: T.ideal, type: 'line', data: [{x: 1e-5, y: 1e-5}, {x: 1, y: 1}], borderColor: ink, borderDash: [4, 4], pointRadius: 0, borderWidth: 1}]},
+    options: {animation: {duration: 900}, scales: {
+      x: {type: 'logarithmic', min: 1e-5, max: 1, title: {display: true, text: T.pred}},
+      y: {type: 'logarithmic', min: 1e-5, max: 1, title: {display: true, text: T.obs}}},
+      plugins: {tooltip: {callbacks: {label: (c) => c.raw.n ? T.tip.replace('{p}', pf(c.raw.x)).replace('{o}', pf(c.raw.y)).replace('{n}', c.raw.n.toLocaleString(LANG)) : ''}}}}}));
+}
+draw();
+document.addEventListener('themechange', draw);
 </script>
 {% endif %}
 {% endblock %}

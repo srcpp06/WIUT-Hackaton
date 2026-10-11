@@ -1,17 +1,17 @@
 {% extends "base.html" %}{% set active = 'queue' %}
-{% block title %}Queue{% endblock %}
+{% block title %}{{ _('Queue') }}{% endblock %}
 {% block body %}
-<h1>Alert queue</h1>
-<p class="muted">Demo bank: {{ '{:,}'.format(q.counts.high + q.counts.medium + q.counts.low) }} transactions (latest {{ now|dt }}), each scored by LightGBM and the GNN. Riskiest first.{% if n_injected %} Added live: {{ n_injected }}.{% endif %}</p>
+<h1>{{ _('Alert queue') }}</h1>
+<p class="lead">{{ _('Demo bank: {n} transactions (latest {t}), each scored by LightGBM and the GNN. Riskiest first.').format(n=num(q.counts.high + q.counts.medium + q.counts.low), t=now|dt) }}{% if n_injected %} {{ _('Added live: {n}.').format(n=n_injected) }}{% endif %}</p>
 <div class="tiles">
-  <div class="tile high"><b>{{ q.counts.high }}</b><span>High (top 0.5%)</span></div>
-  <div class="tile medium"><b>{{ q.counts.medium }}</b><span>Medium (up to top 2%)</span></div>
-  <div class="tile"><b>{{ '{:,}'.format(q.counts.low) }}</b><span>Low</span></div>
+  <div class="tile high"><b data-count="{{ q.counts.high }}">{{ num(q.counts.high) }}</b><span>{{ _('High (top 0.5%)') }}</span></div>
+  <div class="tile medium"><b data-count="{{ q.counts.medium }}">{{ num(q.counts.medium) }}</b><span>{{ _('Medium (up to top 2%)') }}</span></div>
+  <div class="tile"><b data-count="{{ q.counts.low }}">{{ num(q.counts.low) }}</b><span>{{ _('Low') }}</span></div>
 </div>
-<div class="seg" role="group" aria-label="Filter by level">
-  <a href="/" hx-get="/" hx-target="#queue" hx-push-url="true" class="{{ 'on' if not level }}">All</a>
-  <a href="/?level=high" hx-get="/?level=high" hx-target="#queue" hx-push-url="true" class="{{ 'on' if level == 'high' }}">High</a>
-  <a href="/?level=medium" hx-get="/?level=medium" hx-target="#queue" hx-push-url="true" class="{{ 'on' if level == 'medium' }}">Medium</a>
+<div class="seg" role="group" aria-label="{{ _('Filter by level') }}">
+  <a href="/" hx-get="/" hx-target="#queue" hx-push-url="true" class="{{ 'on' if not level }}">{{ _('All') }}</a>
+  <a href="/?level=high" hx-get="/?level=high" hx-target="#queue" hx-push-url="true" class="{{ 'on' if level == 'high' }}">{{ _('High') }}</a>
+  <a href="/?level=medium" hx-get="/?level=medium" hx-target="#queue" hx-push-url="true" class="{{ 'on' if level == 'medium' }}">{{ _('Medium') }}</a>
 </div>
 <div id="queue">{% include "_queue_table.html" %}</div>
 {% endblock %}

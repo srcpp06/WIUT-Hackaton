@@ -1,12 +1,12 @@
 <section class="card ok">
-  <h2>Added and scored: {{ res.rows|length }} transaction{{ 's' if res.rows|length != 1 }} in {{ res.ms_total }} ms ({{ res.ms_per_tx }} ms per transaction)</h2>
+  <h2>{{ _('Added and scored: {n} transactions in {ms} ms ({per} ms per transaction)').format(n=res.rows|length, ms=num(res.ms_total, 1), per=num(res.ms_per_tx, 1)) }}</h2>
   <div class="scroll"><table class="grid">
-    <thead><tr><th>#</th><th>Time</th><th>Sender → Receiver</th><th class="num">Amount</th><th>Channel</th><th class="num">Risk</th><th>Level</th><th>Main reason</th></tr></thead>
+    <thead><tr><th>#</th><th>{{ _('Time') }}</th><th>{{ _('Sender → Receiver') }}</th><th class="num">{{ _('Amount') }}</th><th>{{ _('Channel') }}</th><th class="num">{{ _('Risk') }}</th><th>{{ _('Level') }}</th><th>{{ _('Main reason') }}</th></tr></thead>
     <tbody>{% for a in items %}
-      <tr class="lvl-{{ a.level }}"><td><a href="/alert/{{ a.row }}">{{ a.row }}</a></td><td>{{ a.ts|dt }}</td><td>{{ a.src_short }} → {{ a.dst_short }}</td>
-      <td class="num">{{ a.amount_uzs|uzs }}</td><td>{{ a.rail }}</td><td class="num"><b>{{ a.prob|pct }}</b></td>
-      <td><span class="pill {{ a.level }}">{{ a.level|level }}</span> rank {{ '{:,}'.format(a.rank) }}</td><td>{{ a.reasons[0].title if a.reasons }}</td></tr>
+      <tr class="click lvl-{{ a.level }}" onclick="location='/alert/{{ a.row }}'"><td><a href="/alert/{{ a.row }}">{{ a.row }}</a></td><td>{{ a.ts|dt }}</td><td>{{ a.src_short }} → {{ a.dst_short }}</td>
+      <td class="num">{{ uzs(a.amount_uzs) }}</td><td>{{ _(a.rail) }}</td><td class="num"><b>{{ pct(a.prob) }}</b></td>
+      <td><span class="pill {{ a.level }}">{{ _(LEVELS[a.level]) }}</span> <span class="muted small">{{ _('rank {r}').format(r=num(a.rank)) }}</span></td><td>{{ _(a.reasons[0].title) if a.reasons }}</td></tr>
     {% endfor %}</tbody>
   </table></div>
-  <p class="small muted"><a href="/">Open the queue →</a></p>
+  <p class="small muted"><a href="/">{{ _('Open the queue') }} →</a></p>
 </section>

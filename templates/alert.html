@@ -1,79 +1,83 @@
 {% extends "base.html" %}{% set active = 'queue' %}
-{% block title %}Alert {{ a.row }}{% endblock %}
+{% block title %}{{ _('Alert') }} {{ a.row }}{% endblock %}
 {% block body %}
-<p class="crumbs"><a href="/">← Queue</a></p>
+<p class="crumbs"><a href="/">← {{ _('Queue') }}</a></p>
 <div class="head-row">
   <div>
-    <h1>Transaction #{{ a.row }} {% if a.injected %}<span class="tag">added live</span>{% endif %}</h1>
-    <p class="muted">{{ a.ts|dt }} · {{ a.rail }} · {{ a.amount_uzs|uzs }} (≈ {{ '{:,.0f}'.format(a.amount_usd) }} USD)</p>
+    <h1>{{ _('Transaction') }} #{{ a.row }} {% if a.injected %}<span class="tag live">{{ _('added live') }}</span>{% endif %}</h1>
+    <p class="lead">{{ a.ts|dt }} · {{ _(a.rail) }} · {{ uzs(a.amount_uzs) }} (≈ {{ num(a.amount_usd) }} USD)</p>
   </div>
-  <div class="score {{ a.level }}">
-    <b>{{ a.prob|pct }}</b><span>probability of money laundering</span>
-    <span class="pill {{ a.level }}">{{ a.level|level }} · rank {{ '{:,}'.format(a.rank) }} of {{ '{:,}'.format(a.n) }}</span>
+  {% set circ = 2 * 3.14159265 * 48 %}
+  <div class="gauge {{ a.level }}">
+    <svg viewBox="0 0 112 112" aria-hidden="true"><circle class="track" cx="56" cy="56" r="48"/>
+      <circle class="val" cx="56" cy="56" r="48" data-p="{{ a.prob }}" style="stroke-dasharray: {{ circ }}; stroke-dashoffset: {{ circ * (1 - a.prob) }}"/></svg>
+    <div class="txt"><b>{{ pct(a.prob) }}</b><span>{{ _('probability of money laundering') }}</span>
+      <span class="pill {{ a.level }}">{{ _(LEVELS[a.level]) }} · {{ _('rank {r} of {n}').format(r=num(a.rank), n=num(a.n)) }}</span></div>
   </div>
 </div>
 
 <div class="cols">
   <section class="card">
-    <h2>Who → whom</h2>
+    <h2>{{ _('Who → whom') }}</h2>
     <div class="parties">
-      <div><span class="muted">Sender</span><a href="/account/{{ a.src|urlencode }}"><b>{{ a.src_short }}</b></a>
-        <span>{{ a.src_info.name or "not a bank customer / external account" }}{% if a.src_info.persona %} · {{ PERSONAS.get(a.src_info.persona, '') }}, {{ a.src_info.city }}{% endif %}</span></div>
+      <div><span class="muted small">{{ _('Sender') }}</span><a href="/account/{{ a.src|urlencode }}"><b>{{ a.src_short }}</b></a>
+        <span>{{ a.src_info.name or _('not a bank customer / external account') }}{% if a.src_info.persona %} · {{ _(PERSONAS.get(a.src_info.persona, '')) }}, {{ _(a.src_info.city) }}{% endif %}</span></div>
       <div class="arrow">→</div>
-      <div><span class="muted">Receiver</span><a href="/account/{{ a.dst|urlencode }}"><b>{{ a.dst_short }}</b></a>
-        <span>{{ a.dst_info.name or "not a bank customer / external account" }}{% if a.dst_info.persona %} · {{ PERSONAS.get(a.dst_info.persona, '') }}, {{ a.dst_info.city }}{% endif %}</span></div>
+      <div><span class="muted small">{{ _('Receiver') }}</span><a href="/account/{{ a.dst|urlencode }}"><b>{{ a.dst_short }}</b></a>
+        <span>{{ a.dst_info.name or _('not a bank customer / external account') }}{% if a.dst_info.persona %} · {{ _(PERSONAS.get(a.dst_info.persona, '')) }}, {{ _(a.dst_info.city) }}{% endif %}</span></div>
     </div>
-    <h2>Two models</h2>
+    <h2>{{ _('Two models') }}</h2>
     <div class="bars">
-      <div><span>LightGBM (the payment, account history and earlier risk)</span><meter min="0" max="1" value="{{ a.p_lgbm }}"></meter><b>{{ a.p_lgbm|pct }}</b></div>
-      <div><span>GNN (the network of accounts)</span><meter min="0" max="1" value="{{ a.p_gnn }}"></meter><b>{{ a.p_gnn|pct }}</b></div>
+      <div><span>{{ _('LightGBM (the payment, account history and earlier risk)') }}</span><span class="bar-track"><i data-w="{{ '%.1f'|format(100 * a.p_lgbm) }}%" style="width: {{ '%.1f'|format(100 * a.p_lgbm) }}%"></i></span><b>{{ pct(a.p_lgbm) }}</b></div>
+      <div><span>{{ _('GNN (the network of accounts)') }}</span><span class="bar-track"><i data-w="{{ '%.1f'|format(100 * a.p_gnn) }}%" style="width: {{ '%.1f'|format(100 * a.p_gnn) }}%"></i></span><b>{{ pct(a.p_gnn) }}</b></div>
     </div>
-    <p class="small muted">Final score: the two model scores combined with weights learnt on the validation period (stacking).</p>
+    <p class="small muted">{{ _('Final score: the two model scores combined with weights learnt on the validation period (stacking).') }}</p>
   </section>
 
   <section class="card">
-    <h2>Why (SHAP)</h2>
+    <h2>{{ _('Why (SHAP)') }}</h2>
     <ol class="reasons">
     {% for r in a.reasons %}
       <li class="{{ 'up' if r.up else 'down' }}">
-        <b>{{ r.title }}</b> <span class="tag">{{ 'raises risk' if r.up else 'lowers risk' }}</span>
+        <b>{{ _(r.title) }}</b> <span class="tag {{ 'up' if r.up else 'down' }}">{{ _('raises risk') if r.up else _('lowers risk') }}</span>
         <p>{{ r.evidence }}</p>
       </li>
     {% endfor %}
     </ol>
-    <p class="small muted">LightGBM's contribution of each feature (TreeSHAP), grouped by meaning; the numbers are this transaction's actual features.</p>
+    <p class="small muted">{{ _("LightGBM's contribution of each feature (TreeSHAP), grouped by meaning; the numbers are this transaction's actual features.") }}</p>
   </section>
 </div>
 
 <section class="card">
-  <h2>Evidence subgraph: transactions around the two accounts (±7 days)</h2>
+  <h2>{{ _('Evidence subgraph: transactions around the two accounts (±7 days)') }}</h2>
   {% set g = a.graph %}
-  <svg class="graph" viewBox="-1.05 -1.0 2.1 2.0" role="img" aria-label="Money flows between the accounts">
+  <svg class="graph" viewBox="-1.05 -1.0 2.1 2.0" role="img" aria-label="{{ _('Money flows between the accounts') }}">
     <defs><marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="currentColor"/></marker></defs>
-    {% set pos = {} %}{% for n in g.nodes %}{% set _ = pos.update({n.id: n}) %}{% endfor %}
+    {% set pos = {} %}{% for n in g.nodes %}{% set _x = pos.update({n.id: n}) %}{% endfor %}
     {% for e in g.edges %}{% set s = pos[e.src] %}{% set d = pos[e.dst] %}
       <a href="/alert/{{ e.row }}"><line x1="{{ s.x }}" y1="{{ s.y * 0.9 }}" x2="{{ d.x }}" y2="{{ d.y * 0.9 }}"
         class="edge {{ 'alert' if e.alert }} {{ 'r3' if e.risk >= 0.5 else 'r2' if e.risk >= 0.1 else 'r1' }}" marker-end="url(#ar)">
-        <title>{{ e.ts }} · {{ e.amount_uzs|uzs }} · risk {{ e.risk|pct }}</title></line></a>
+        <title>{{ e.ts }} · {{ uzs(e.amount_uzs) }} · {{ _('risk') }} {{ pct(e.risk) }}</title></line></a>
     {% endfor %}
     {% for n in g.nodes %}
       <a href="/account/{{ n.id|urlencode }}"><circle cx="{{ n.x }}" cy="{{ n.y * 0.9 }}" r="{{ 0.055 if n.main else 0.03 }}" class="node {{ 'main' if n.main }}"><title>{{ n.id }}</title></circle>
-      <text x="{{ n.x }}" y="{{ n.y * 0.9 + (0.1 if n.main else 0.065) }}" class="lbl {{ 'main' if n.main }}">{{ n.label }}</text></a>
+      <text x="{{ n.x }}" y="{{ n.y * 0.9 + (0.1 if n.main else 0.065) }}" class="lbl {{ 'main' if n.main }}">{{ _(n.label) if n.main else n.label }}</text></a>
     {% endfor %}
   </svg>
-  <p class="small muted">Line colour: red ≥ 50%, amber ≥ 10%, grey &lt; 10% risk. The thick line is this alert. Every line and account can be clicked.</p>
+  <div class="legend"><span><i style="background: var(--r3)"></i>{{ _('risk') }} ≥ 50%</span><span><i style="background: var(--r2)"></i>≥ 10%</span><span><i style="background: var(--r1)"></i>&lt; 10%</span>
+    <span>{{ _('The thick line is this alert. Every line and account can be clicked.') }}</span></div>
 </section>
 
 <section class="card" id="decision">
-  <h2>Officer decision</h2>
+  <h2>{{ _('Officer decision') }}</h2>
   {% if a.decision %}{% set d = a.decision %}{% include "_decision.html" %}{% else %}
   <form hx-post="/alert/{{ a.row }}/decision" hx-target="#decision-body" hx-swap="innerHTML" class="form">
-    <div class="seg radio" role="radiogroup" aria-label="Decision">
-      {% for k, v in ACTIONS.items() %}<label><input type="radio" name="action" value="{{ k }}" required> {{ v }}</label>{% endfor %}
+    <div class="choices" role="radiogroup" aria-label="{{ _('Decision') }}">
+      {% for k, v in ACTIONS.items() %}<label><input type="radio" name="action" value="{{ k }}" required> {{ _(v) }}</label>{% endfor %}
     </div>
-    <label>Reason <textarea name="reason" minlength="3" maxlength="500" required placeholder="For example: money from 14 different accounts collected in one day, then withdrawn in cash"></textarea></label>
-    <label>Officer <input name="officer" minlength="2" maxlength="60" required placeholder="Full name"></label>
-    <button type="submit">Save decision (written to the audit log)</button>
+    <label>{{ _('Reason') }} <textarea name="reason" minlength="3" maxlength="500" required placeholder="{{ _('For example: money from 14 different accounts collected in one day, then withdrawn in cash') }}"></textarea></label>
+    <label>{{ _('Officer') }} <input name="officer" minlength="2" maxlength="60" required placeholder="{{ _('Full name') }}"></label>
+    <button type="submit">{{ _('Save decision (written to the audit log)') }}</button>
   </form>{% endif %}
   <div id="decision-body"></div>
 </section>

@@ -1,58 +1,58 @@
 {% extends "base.html" %}{% set active = 'inject' %}
-{% block title %}Live input{% endblock %}
+{% block title %}{{ _('Live input') }}{% endblock %}
 {% block body %}
-<h1>Live input</h1>
-<p class="muted">Add a new transaction or a whole scheme to the demo bank: features are computed on the spot, both models score it and the queue updates. The models are not told what was added; they only see the transactions. Demo time: {{ now|dt }}.{% if n_injected %} Added so far: {{ n_injected }}.{% endif %}</p>
+<h1>{{ _('Live input') }}</h1>
+<p class="lead">{{ _('Add a new transaction or a whole scheme to the demo bank: features are computed on the spot, both models score it and the queue updates. The models are not told what was added; they only see the transactions.') }} {{ _('Demo time: {t}.').format(t=now|dt) }}{% if n_injected %} {{ _('Added so far: {n}.').format(n=n_injected) }}{% endif %}</p>
 
 <div class="cols">
-<section class="card">
-  <h2>1. One transaction</h2>
+<section class="card lift">
+  <h2>{{ _('1. One transaction') }}</h2>
   <form hx-post="/inject/tx" hx-target="#result" class="form">
-    <label>Sender (demo customer)
+    <label>{{ _('Sender (demo customer)') }}
       <select name="src" required>
-        {% for kind, accts in personas.items() %}<optgroup label="{{ PERSONAS.get(kind, kind) }}">
-          {% for x in accts %}<option value="{{ x.node }}">{{ x.name }} · {{ x.city }} · {{ x.node.split(':')[0] }} ·{{ x.node[-4:] }}</option>{% endfor %}
+        {% for kind, accts in personas.items() %}<optgroup label="{{ _(PERSONAS.get(kind, kind)) }}">
+          {% for x in accts %}<option value="{{ x.node }}">{{ x.name }} · {{ _(x.city) }} · {{ x.node.split(':')[0] }} ·{{ x.node[-4:] }}</option>{% endfor %}
         </optgroup>{% endfor %}
       </select></label>
     <div class="row2">
-      <label>Receiver's bank <select name="dst_bank">{% for b in banks %}<option>{{ b }}</option>{% endfor %}</select></label>
-      <label>Account number <input name="dst_account" required inputmode="numeric" placeholder="20208000123456789012" pattern="[0-9 ]{8,24}"></label>
+      <label>{{ _("Receiver's bank") }} <select name="dst_bank">{% for b in banks %}<option>{{ b }}</option>{% endfor %}</select></label>
+      <label>{{ _('Account number') }} <input name="dst_account" required inputmode="numeric" placeholder="20208000123456789012" pattern="[0-9 ]{8,24}"></label>
     </div>
     <div class="row2">
-      <label>Amount (UZS) <input name="amount" type="number" min="1000" max="10000000000" step="1000" value="9500000" required></label>
-      <label>Channel <select name="rail">{% for r in rails %}<option>{{ r }}</option>{% endfor %}</select></label>
+      <label>{{ _('Amount (UZS)') }} <input name="amount" type="number" min="1000" max="10000000000" step="1000" value="9500000" required></label>
+      <label>{{ _('Channel') }} <select name="rail">{% for r in rails %}<option value="{{ r }}">{{ _(r) }}</option>{% endfor %}</select></label>
     </div>
-    <label>Minutes after the demo time <input name="minutes" type="number" min="1" max="1440" value="5"></label>
-    <button type="submit">Add and score</button>
+    <label>{{ _('Minutes after the demo time') }} <input name="minutes" type="number" min="1" max="1440" value="5"></label>
+    <button type="submit">{{ _('Add and score') }}</button>
   </form>
 </section>
 
-<section class="card">
-  <h2>2. A whole scheme</h2>
+<section class="card lift">
+  <h2>{{ _('2. A whole scheme') }}</h2>
   <form hx-post="/inject/scheme" hx-target="#result" class="form">
-    <label>Central account
+    <label>{{ _('Central account') }}
       <select name="target" required>
-        {% for kind, accts in personas.items() %}<optgroup label="{{ PERSONAS.get(kind, kind) }}">
-          {% for x in accts %}<option value="{{ x.node }}">{{ x.name }} · {{ x.city }} ·{{ x.node[-4:] }}</option>{% endfor %}
+        {% for kind, accts in personas.items() %}<optgroup label="{{ _(PERSONAS.get(kind, kind)) }}">
+          {% for x in accts %}<option value="{{ x.node }}">{{ x.name }} · {{ _(x.city) }} ·{{ x.node[-4:] }}</option>{% endfor %}
         </optgroup>{% endfor %}
       </select></label>
-    <label>Scheme
+    <label>{{ _('Scheme') }}
       <select name="kind">
-        <option value="fan_out">Fan-out: one account pays many accounts</option>
-        <option value="fan_in">Mule fan-in: collect from many accounts, then cash out</option>
-        <option value="cycle">Cycle: transfers around 4 accounts and back</option>
+        <option value="fan_out">{{ _('Fan-out: one account pays many accounts') }}</option>
+        <option value="fan_in">{{ _('Mule fan-in: collect from many accounts, then cash out') }}</option>
+        <option value="cycle">{{ _('Cycle: transfers around 4 accounts and back') }}</option>
       </select></label>
-    <label>Number of transactions <input name="n" type="number" min="3" max="30" value="10"></label>
-    <button type="submit">Add the scheme and score it</button>
+    <label>{{ _('Number of transactions') }} <input name="n" type="number" min="3" max="30" value="10"></label>
+    <button type="submit">{{ _('Add the scheme and score it') }}</button>
   </form>
-  <form method="post" action="/inject/reset" class="inline"><button class="ghost" type="submit">Reset the demo bank to its initial state</button></form>
+  <form method="post" action="/inject/reset" class="inline"><button class="ghost" type="submit">{{ _('Reset the demo bank to its initial state') }}</button></form>
 </section>
 </div>
 
 <section id="result"></section>
 
 <section class="card">
-  <h2>Accounts the model finds riskiest</h2>
-  <ul class="plain">{% for x in risky %}<li><a href="/account/{{ x.node|urlencode }}">{{ x.name or x.node }}</a> · {{ x.bank }} · highest score {{ x.prob|pct }}</li>{% endfor %}</ul>
+  <h2>{{ _('Accounts the model finds riskiest') }}</h2>
+  <ul class="plain">{% for x in risky %}<li><a href="/account/{{ x.node|urlencode }}">{{ x.name or x.node }}</a> · {{ x.bank }} · {{ _('highest score {p}').format(p=pct(x.prob)) }}</li>{% endfor %}</ul>
 </section>
 {% endblock %}

@@ -15,15 +15,21 @@ from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
 
 from .generator import BANKS, PERSONAS, SCHEMES
+from .i18n import LANGS, Lang
 from .ingest import UZ_COLUMNS, UZ_RAILS
 from .service import Service, scheme_rows
 
 ROOT = Path(__file__).resolve().parent.parent
 BRAND = "FlowLens"
-VERSION = "0.5.0"
+VERSION = "0.6.0"
 LEVELS = {'high': 'High', 'medium': 'Medium', 'low': 'Low'}
 ACTIONS = {'confirm': 'Confirm as suspicious', 'escalate': 'Escalate to the financial monitoring unit',
            'dismiss': 'Dismiss (false alarm)'}
+LOGO_SVG = ('<svg viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><defs><linearGradient id="fl-g" '
+            'x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#6366f1"/><stop offset="1" stop-color="#06b6d4"/></linearGradient>'
+            '</defs><circle cx="14" cy="14" r="10" fill="none" stroke="url(#fl-g)" stroke-width="3"/><path d="M21.5 21.5 28 28" '
+            'stroke="url(#fl-g)" stroke-width="3.4" stroke-linecap="round"/><path d="M8.5 16.5l3.2-3.8 2.8 2.4 4-4.6" fill="none" '
+            'stroke="url(#fl-g)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>')
 state = {}
 
 
@@ -44,7 +50,7 @@ templates.env.filters.update(
     pct=lambda v: f"{100 * v:.1f}%",
     dt=lambda v: v.strftime('%Y-%m-%d %H:%M') if hasattr(v, 'strftime') else str(v)[:16],
     level=lambda v: LEVELS.get(str(v), str(v)))
-templates.env.globals.update(BRAND=BRAND, VERSION=VERSION, LEVELS=LEVELS, ACTIONS=ACTIONS, PERSONAS=PERSONAS)
+templates.env.globals.update(BRAND=BRAND, LOGO_SVG=LOGO_SVG, VERSION=VERSION, LEVELS=LEVELS, ACTIONS=ACTIONS, PERSONAS=PERSONAS)
 
 
 def svc() -> Service:
@@ -53,8 +59,26 @@ def svc() -> Service:
     return state['svc']
 
 
+def lang_of(request):
+    """?lang= switches the language (and is remembered in a cookie); otherwise the cookie; English by default."""
+    for code in (request.query_params.get('lang'), request.cookies.get('lang')):
+        if code in LANGS:
+            return code
+    return 'en'
+
+
+def lang_url(request, code):
+    query = '&'.join(f'{k}={v}' for k, v in request.query_params.items() if k != 'lang')
+    return f"{request.url.path}?{query + '&' if query else ''}lang={code}"
+
+
 def page(request, name, **ctx):
-    return templates.TemplateResponse(request, name, ctx)
+    L = Lang(lang_of(request))
+    resp = templates.TemplateResponse(request, name, {**ctx, 'lang': L.code, '_': L.t, 'num': L.num, 'pct': L.pct, 'uzs': L.uzs,
+                                                      'lang_url': lambda code: lang_url(request, code)})
+    if request.query_params.get('lang') in LANGS:
+        resp.set_cookie('lang', L.code, max_age=365 * 86400, samesite='lax')
+    return resp
 
 
 # ---------------------------------------------------------------- pages
@@ -80,7 +104,7 @@ def alert_page(request: Request, row: int):
     s = svc()
     if row not in s.pos:
         raise HTTPException(404, f"Transaction not found: {row}")
-    return page(request, 'alert.html', a=s.alert(row), dev=s.m.metrics.get('dev', False))
+    return page(request, 'alert.html', a=s.alert(row, lang_of(request)), dev=s.m.metrics.get('dev', False))
 
 
 @app.post("/alert/{row}/decision", response_class=HTMLResponse, include_in_schema=False)
@@ -123,7 +147,7 @@ def inject_tx(request: Request, src: str = Form(...), dst_bank: str = Form(...),
     rows = pl.DataFrame([(s.now() + timedelta(minutes=minutes), sb, sa, dst_bank, acct, round(amount, 2), rail)],
                         schema=list(UZ_COLUMNS), orient='row').with_columns(pl.col('ts').cast(pl.Datetime('us')))
     res = s.inject(rows)
-    return page(request, '_injected.html', res=res, items=[s.alert(r) for r in res['rows']])
+    return page(request, '_injected.html', res=res, items=[s.alert(r, lang_of(request)) for r in res['rows']])
 
 
 @app.post("/inject/scheme", response_class=HTMLResponse, include_in_schema=False)
@@ -133,7 +157,7 @@ def inject_scheme(request: Request, target: str = Form(...), kind: Literal['fan_
     if target not in set(s.accounts['node'].to_list()):
         raise HTTPException(422, "Account not found")
     res = s.inject(scheme_rows(kind, target, s.now(), s.accounts, np.random.default_rng(), n=n))
-    return page(request, '_injected.html', res=res, items=[s.alert(r) for r in res['rows']])
+    return page(request, '_injected.html', res=res, items=[s.alert(r, lang_of(request)) for r in res['rows']])
 
 
 @app.post("/inject/reset", include_in_schema=False)
@@ -150,11 +174,12 @@ def upload_page(request: Request):
 @app.post("/upload", response_class=HTMLResponse, include_in_schema=False)
 async def upload(request: Request, file: UploadFile = File(...)):
     s = svc()
+    L = Lang(lang_of(request))
     data = await file.read(20_000_001)
     try:
         if len(data) > 20_000_000:
-            raise ValueError("The file is larger than 20 MB.")
-        result = s.score_frame(parse_csv(data))
+            raise ValueError(L.t("The file is larger than 20 MB."))
+        result = s.score_frame(parse_csv(data, L), L.code)
         return page(request, 'upload.html', result=result, error=None, filename=file.filename)
     except ValueError as e:
         return page(request, 'upload.html', result=None, error=str(e))
@@ -219,32 +244,34 @@ def load_json(p):
     return json.loads(p.read_text()) if p.exists() else None
 
 
-def parse_csv(data: bytes) -> pl.DataFrame:
-    """CSV with the UZ columns -> validated frame, or ValueError with a message for the user."""
+def parse_csv(data: bytes, L=Lang('en')) -> pl.DataFrame:
+    """CSV with the UZ columns -> validated frame, or ValueError with a message for the user (in L's language)."""
+    _ = L.t
     try:
         df = pl.read_csv(io.BytesIO(data), infer_schema=False)
     except Exception:
-        raise ValueError("Could not read the CSV: a comma-separated file with a header row is expected.")
+        raise ValueError(_("Could not read the CSV: a comma-separated file with a header row is expected."))
     missing = [c for c in UZ_COLUMNS if c not in df.columns]
     if missing:
-        raise ValueError(f"Missing columns: {', '.join(missing)}. Required columns: {', '.join(UZ_COLUMNS)}.")
+        raise ValueError(_("Missing columns: {cols}. Required columns: {req}.").format(cols=', '.join(missing), req=', '.join(UZ_COLUMNS)))
     if not 10 <= df.height <= 50_000:
-        raise ValueError(f"The file must have 10 to 50,000 rows (it has {df.height:,}).")
+        raise ValueError(_("The file must have 10 to 50,000 rows (it has {n}).").format(n=L.num(df.height)))
     c = pl.col
     df = df.select(list(UZ_COLUMNS)).with_columns(
         c('ts').str.strip_chars().str.to_datetime(strict=False, time_unit='us'),
         c('amount_uzs').str.strip_chars().str.replace_all(' ', '').cast(pl.Float64, strict=False),
         *[c(k).str.strip_chars() for k in ('src_bank', 'src_account', 'dst_bank', 'dst_account', 'rail')])
-    checks = [(c('ts').is_null(), "invalid date/time (example: 2026-09-30 14:05:00)"),
-              (c('amount_uzs').is_null() | (c('amount_uzs') <= 0), "amount must be a positive number"),
-              (~c('rail').is_in(list(UZ_RAILS)), f"rail must be one of: {', '.join(UZ_RAILS)}"),
+    checks = [(c('ts').is_null(), _("invalid date/time (example: 2026-09-30 14:05:00)")),
+              (c('amount_uzs').is_null() | (c('amount_uzs') <= 0), _("amount must be a positive number")),
+              (~c('rail').is_in(list(UZ_RAILS)), _("rail must be one of: {r}").format(r=', '.join(UZ_RAILS))),
               (c('src_account').is_null() | c('dst_account').is_null() | c('src_bank').is_null() | c('dst_bank').is_null(),
-               "bank and account columns must not be empty")]
+               _("bank and account columns must not be empty"))]
     errors = []
     for cond, msg in checks:
         bad = df.with_row_index('i').filter(cond.fill_null(True))['i']
         if len(bad):
-            errors.append(f"{msg} (rows: {', '.join(str(i + 2) for i in bad[:5].to_list())}{' …' if len(bad) > 5 else ''})")
+            rows = ', '.join(str(i + 2) for i in bad[:5].to_list()) + (' …' if len(bad) > 5 else '')
+            errors.append(_("{msg} (rows: {rows})").format(msg=msg, rows=rows))
     if errors:
         raise ValueError('; '.join(errors))
     return df

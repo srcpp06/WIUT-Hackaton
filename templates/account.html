@@ -1,15 +1,15 @@
 {% extends "base.html" %}{% set active = 'queue' %}
-{% block title %}Account{% endblock %}
+{% block title %}{{ _('Account') }}{% endblock %}
 {% block body %}
-<p class="crumbs"><a href="/">← Queue</a></p>
+<p class="crumbs"><a href="/">← {{ _('Queue') }}</a></p>
 <h1>{{ acc.info.name or acc.node }}</h1>
-<p class="muted">{{ acc.node }}{% if acc.info.persona %} · {{ PERSONAS.get(acc.info.persona, '') }} · {{ acc.info.city }}{% endif %} · {{ '{:,}'.format(acc.n) }} transactions · highest score {{ acc.max_prob|pct }}</p>
+<p class="lead">{{ acc.node }}{% if acc.info.persona %} · {{ _(PERSONAS.get(acc.info.persona, '')) }} · {{ _(acc.info.city) }}{% endif %} · {{ _('{n} transactions').format(n=num(acc.n)) }} · {{ _('highest score {p}').format(p=pct(acc.max_prob)) }}</p>
 <div class="scroll"><table class="grid">
-  <thead><tr><th>Time</th><th>Direction</th><th>Counterparty</th><th class="num">Amount</th><th>Channel</th><th class="num">Risk</th><th>Level</th></tr></thead>
+  <thead><tr><th>{{ _('Time') }}</th><th>{{ _('Direction') }}</th><th>{{ _('Counterparty') }}</th><th class="num">{{ _('Amount') }}</th><th>{{ _('Channel') }}</th><th class="num">{{ _('Risk') }}</th><th>{{ _('Level') }}</th></tr></thead>
   <tbody>{% for x in acc.rows %}
-    <tr class="lvl-{{ x.level }}" onclick="location='/alert/{{ x.row }}'"><td>{{ x.ts|dt }}</td><td>{{ 'out' if x.direction == 'out' else 'in' }}</td>
-    <td>{{ x.dst_short if x.direction == 'out' else x.src_short }}</td><td class="num">{{ x.amount_uzs|uzs }}</td><td>{{ x.rail }}</td>
-    <td class="num"><b>{{ x.prob|pct }}</b></td><td><span class="pill {{ x.level }}">{{ x.level|level }}</span></td></tr>
+    <tr class="click lvl-{{ x.level }}" onclick="location='/alert/{{ x.row }}'"><td>{{ x.ts|dt }}</td><td>{{ _('out') if x.direction == 'out' else _('in') }}</td>
+    <td>{{ x.dst_short if x.direction == 'out' else x.src_short }}</td><td class="num">{{ uzs(x.amount_uzs) }}</td><td>{{ _(x.rail) }}</td>
+    <td class="num"><b>{{ pct(x.prob) }}</b></td><td><span class="pill {{ x.level }}">{{ _(LEVELS[x.level]) }}</span></td></tr>
   {% endfor %}</tbody>
 </table></div>
 {% endblock %}

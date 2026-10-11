@@ -41,7 +41,7 @@ def uz_check(lgbm, model, scaler, cal_g, stack, log):
         top = np.argsort(-q, kind='stable')[:k]
         rows.append({'name': name, 'pr_auc': float(average_precision_score(y, q)), 'recall_top2': float(y[top].sum() / y.sum())})
         log(f'UZ demo bank, {name}: PR-AUC {rows[-1]["pr_auc"]:.3f}, recall in top 2% {rows[-1]["recall_top2"]:.1%}')
-    return {'note': uz_note(t.height, int(y.sum())), 'models': rows}
+    return {'note': uz_note(t.height, int(y.sum())), 'counts': {'transactions': t.height, 'planted': int(y.sum())}, 'models': rows}
 
 
 def uz_note(n, planted):

@@ -118,7 +118,8 @@ def main():
               + '  '.join(f'steps {k}: PR-AUC {v["pr_auc"]:.3f}' for k, v in out[-1]['periods'].items()), flush=True)
     note = elliptic_note(len(f), ei.shape[1], int(te.sum()))
     Path('models').mkdir(exist_ok=True)
-    Path('models/elliptic.json').write_text(json.dumps({'note': note, 'models': out}, indent=2, ensure_ascii=False))
+    counts = {'transactions': len(f), 'edges': int(ei.shape[1]), 'test_labelled': int(te.sum())}
+    Path('models/elliptic.json').write_text(json.dumps({'note': note, 'counts': counts, 'models': out}, indent=2, ensure_ascii=False))
 
 
 def elliptic_note(n_tx, n_edges, n_test):
