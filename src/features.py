@@ -3,12 +3,12 @@
 Every transaction is described by
   * its own attributes: USD amount, payment rail, hour, weekday, same bank, self-transfer;
   * the sender's and the receiver's recent history *before* this transaction: how many payments
-    went in and out in the last 24 hours and 7 days, how much money, and how many different
-    counterparties (fan-in / fan-out, the shape of mule and laundering schemes);
+    went in and out in the last 24 hours and 7 days, how much money, and how many *new*
+    counterparties (accounts never paid / paid by before: fan-in and fan-out of mule schemes);
   * pass-through timing: how soon money leaves an account after money arrived;
   * the relationship: has this sender paid this receiver before?
 
-Windows are closed on the left, so a transaction never sees itself or anything later. The same
+Windows end just before the transaction's own second, so it never sees itself or anything later. The same
 code featurises the 5M-row training data and a single transaction injected live in the demo.
 """
 import numpy as np
@@ -16,7 +16,6 @@ import polars as pl
 
 from .ingest import FORMATS
 
-WINDOWS = {'1d': '1d', '7d': '7d'}
 SIDE_STATS = ['n_in', 'n_out', 'usd_in', 'usd_out', 'cp_in', 'cp_out']
 
 
@@ -36,41 +35,45 @@ def account_events(c):
     return pl.concat([out, inn]).sort('acct', 'ts', 'tx_id', 'is_in')   # self-transfer: out before in, deterministic
 
 
-def history(ev, chunks=1):
-    """Rolling per-account statistics over the events strictly before each event. Accounts are
-    processed in `chunks` groups to bound memory (an account's events always stay in one group)."""
-    if chunks > 1:
-        return pl.concat([history(ev.filter(pl.col('acct') % chunks == k)) for k in range(chunks)])
-    parts = []
-    for name, period in WINDOWS.items():
-        i, o = pl.col('is_in') == 1, pl.col('is_in') == 0
-        r = ev.rolling(index_column='ts', period=period, group_by='acct', closed='left').agg(
-            pl.col('tx_id').last().alias('_last'),   # placeholder so empty windows still yield a row
-            i.sum().alias(f'n_in_{name}'), o.sum().alias(f'n_out_{name}'),
-            pl.col('amount_usd').filter(i).sum().alias(f'usd_in_{name}'),
-            pl.col('amount_usd').filter(o).sum().alias(f'usd_out_{name}'),
-            pl.col('cp').filter(i).n_unique().alias(f'cp_in_{name}'),
-            pl.col('cp').filter(o).n_unique().alias(f'cp_out_{name}'))
-        r = r.sort('acct', 'ts', maintain_order=True)   # rolling() may emit the accounts in any order
-        assert r['acct'].equals(ev['acct']) and r['ts'].equals(ev['ts']), 'rolling output is not aligned with the events'
-        parts.append(r.drop('acct', 'ts', '_last'))
-    # aligned on (account, time); events tied on both have identical windows, so their order does not matter
-    base = ev.select('tx_id', 'is_in', 'acct', 'ts')
-    h = pl.concat([base] + parts, how='horizontal')
+WINDOW_SECONDS = {'1d': 86_400, '7d': 7 * 86_400}
+
+
+def history(ev):
+    """Per-account statistics over the events strictly before each event (same second excluded).
+    ev must be sorted by (acct, ts). Window sums come from cumulative sums and a binary search
+    for each window's start, so memory stays linear even for hub accounts with 100k payments."""
+    acct = ev['acct'].to_numpy().astype(np.int64)
+    sec = ev['ts'].dt.epoch('s').to_numpy().astype(np.int64)
+    sec = sec - sec.min()
+    key = acct * 10**10 + sec                          # sorted, because ev is sorted by (acct, ts)
+    first_of_acct = np.searchsorted(key, acct * 10**10, 'left')
+    stop = np.searchsorted(key, key, 'left')            # events of this account strictly before this second
+    is_in = ev['is_in'].to_numpy().astype(bool)
+    usd = ev['amount_usd'].to_numpy().astype(np.float64)
+    # first time this account meets this counterparty in this direction: "new counterparty"
+    new_cp = ev.select((pl.int_range(pl.len()).over('acct', 'cp', 'is_in') == 0).alias('f'))['f'].to_numpy()
+    cum = lambda v: np.concatenate([[0.0], np.cumsum(v, dtype=np.float64)])
+    sums = {'n_in': cum(is_in), 'n_out': cum(~is_in), 'usd_in': cum(usd * is_in), 'usd_out': cum(usd * ~is_in),
+            'cp_in': cum(new_cp & is_in), 'cp_out': cum(new_cp & ~is_in)}
+    cols = {}
+    for name, period in WINDOW_SECONDS.items():
+        begin = np.maximum(np.searchsorted(key, key - period, 'left'), first_of_acct)
+        for stat, c in sums.items():
+            cols[f'{stat}_{name}'] = (c[stop] - c[begin]).astype(np.float32)
+    h = ev.select('tx_id', 'is_in', 'acct', 'ts').with_columns(**{k: pl.Series(v) for k, v in cols.items()})
     # timing within the account: previous event of any kind, previous incoming money, first ever event
-    sec = pl.col('ts').dt.epoch('s')
-    h = h.with_columns(
-        prev_any=sec - sec.shift(1).over('acct'),
-        prev_in=sec - pl.when(pl.col('is_in') == 1).then(sec).shift(1).forward_fill().over('acct'),
-        age=sec - sec.min().over('acct'),
-        n_before=pl.int_range(pl.len()).over('acct'))
-    return h
+    s = pl.col('ts').dt.epoch('s')
+    return h.with_columns(
+        prev_any=s - s.shift(1).over('acct'),
+        prev_in=s - pl.when(pl.col('is_in') == 1).then(s).shift(1).forward_fill().over('acct'),
+        age=s - s.min().over('acct'),
+        n_before=pl.Series(np.arange(len(acct)) - first_of_acct))
 
 
 def build(t):
     """Feature matrix (pandas, one row per transaction in t, same order)."""
     c = compact(t)
-    h = history(account_events(c), chunks=max(1, t.height // 1_000_000))
+    h = history(account_events(c))
     side = [x for x in h.columns if x not in ('tx_id', 'is_in', 'acct', 'ts')]
     h = h.with_columns(pl.col(x).cast(pl.Float32) for x in side)
     snd = h.filter(pl.col('is_in') == 0).select('tx_id', *[pl.col(x).alias(f's_{x}') for x in side])
